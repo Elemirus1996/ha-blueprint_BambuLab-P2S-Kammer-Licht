@@ -9,14 +9,21 @@ Home-Assistant-Blueprint für die **ha-bambulab** / **Bambu Lab Integration**.
 - Kammerlicht **AUS**, wenn Druck beendet ist und Tür geschlossen ist
 - Kammerlicht **AN**, wenn die Tür geöffnet wird
 - Kammerlicht **AUS**, wenn die Tür geschlossen wird und **kein aktiver Druck** läuft
-- Fehlererkennung bevorzugt über **Diagnose-Sensoren** der Integration
-- Optional: **Fehler-Blinken** des Kammerlichts
-- Optional: **mehrere externe Warnleuchten** mit Farbe und Blinkintervall
+- Optional: Fehlererkennung bevorzugt über **Diagnose-Sensoren**
+- Optional: **Kammerlicht blinkt bei Fehler**
+- Optional: **separate externe Statusleuchte**
+  - **Aus** = Drucker inaktiv
+  - **Grün pulsierend** = Druck fertig
+  - **Blau pulsierend** = Druck läuft
+  - **Blau mit Helligkeit nach Fortschritt** = optional beim Drucken
+  - **Orange** = Warnung
+  - **Rot** = Fehler
+- Optional: **mehrere externe Fehlerleuchten** mit Farbe und Blinkintervall
 - Optional: **manueller Override** über `input_boolean`
 - Konfigurierbare **aktive Druckzustände**
 
 ## Wichtige Änderung
-Die Fehler-Sensoren werden jetzt als **Liste mehrerer Diagnose-Sensoren** konfiguriert. Dadurch werden keine leeren optionalen Entity-IDs mehr als Trigger verwendet.
+Die Fehler-Sensoren werden als **Liste mehrerer Diagnose-Sensoren** konfiguriert. Dadurch werden keine leeren optionalen Entity-IDs mehr als Trigger verwendet.
 
 ## Empfohlene Fehler-Sensoren
 Nutze wenn möglich die Diagnose-Entities der Integration, zum Beispiel:
@@ -24,9 +31,12 @@ Nutze wenn möglich die Diagnose-Entities der Integration, zum Beispiel:
 - `binary_sensor.<drucker>_print_error`
 - `binary_sensor.<drucker>_hms_errors`
 
-Diese kannst du jetzt gemeinsam im Feld **Diagnose Fehler-Sensoren** auswählen.
+Diese kannst du gemeinsam im Feld **Diagnose Fehler-Sensoren** auswählen.
 
-Wenn keine Diagnose-Sensoren gesetzt sind, nutzt das Blueprint optional den Fallback über den Druckstatus `failed`.
+## Fortschrittssensor
+Wenn deine Integration einen Druckfortschritt in Prozent bereitstellt, kannst du diesen beim Feld
+**Druckfortschritt Sensor (%)** auswählen. Dann kann die externe blaue Statusleuchte beim Drucken
+optional über die Helligkeit den Fortschritt anzeigen.
 
 ## Import
 Nutze den Badge oben oder diesen Link:
@@ -43,8 +53,9 @@ Wenn du verhindern möchtest, dass die Automation dein Kammerlicht automatisch a
 
 Wenn dieser Helper auf **Ein** steht, schaltet die Automation das Licht nicht automatisch aus.
 
-## Externe Warnleuchten
-Du kannst jetzt **mehrere externe Lampen** auswählen, die bei Fehler gemeinsam blinken.
+## Externe Leuchten
+- **Externe Statusleuchte** = zeigt Druckstatus per Farbe/Pulsieren
+- **Externe Fehlerleuchten** = blinken bei Fehler zusätzlich
 
 ## Hinweise
 Die Bambu-Lab-Statuswerte können je nach Modell und Integration leicht variieren. Deshalb sind die **aktiven Druckzustände** im Blueprint anpassbar.
