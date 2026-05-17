@@ -4,65 +4,72 @@
 
 Home-Assistant-Blueprint für die **ha-bambulab** / **Bambu Lab Integration**.
 
-## Funktionen
-- Kammerlicht **AN**, wenn ein Druck startet
-- Licht **AN**, wenn die Tür geöffnet wird — auch nach Druckende zur Entnahme
-- Kammerlicht **AUS**, wenn die Tür geschlossen wird und **kein aktiver Druck** läuft
-- Die **Statusleuchte** zeigt **Druck fertig** nur solange die Tür geschlossen bleibt
-- Wird die Tür nach einem fertigen Druck geöffnet:
-  - **Statusleuchte AUS**
-  - **Kammerlicht AN** zur Entnahme
-- Optional: Fehlererkennung bevorzugt über **Diagnose-Sensoren**
-- Optional: **Kammerlicht blinkt bei Fehler**
-- Optional: **separate externe Statusleuchte**
-  - **Aus** = Drucker inaktiv
-  - **Grün pulsierend** = Druck fertig (nur bis Tür geöffnet wird)
-  - **Blau pulsierend** = Druck läuft
-  - **Blau mit Helligkeit nach Fortschritt** = optional beim Drucken
-  - **Orange** = Warnung
-  - **Rot** = Fehler
-- Optional: **mehrere externe Fehlerleuchten** mit Farbe und Blinkintervall
-- Optional: **ursprünglichen Zustand externer Fehlerleuchten nach Fehlerende wiederherstellen**
-- Optional: **manueller Override** über `input_boolean`
-- Konfigurierbare **aktive Druckzustände**
+## Unterstützte Entities
+Getestet bzw. ausgelegt auf folgende Entitäten der Integration:
 
-## Wiederherstellung der Fehlerleuchten
-Wenn **Fehlerleuchten nach Fehlerende wiederherstellen** aktiviert ist, speichert das Blueprint beim Fehlerbeginn
-über `scene.create` den aktuellen Zustand der externen Fehlerleuchten und stellt ihn nach Fehlerende wieder her.
+- `sensor.drucker_p2s_druckstatus`
+- `sensor.drucker_p2s_aktueller_arbeitsschritt`
+- `sensor.drucker_p2s_druckfortschritt`
+- `binary_sensor.drucker_p2s_gehausetur`
+- `light.drucker_p2s_druckraumbeleuchtung`
+- `binary_sensor.drucker_p2s_druckfehler`
+- `binary_sensor.drucker_p2s_hms_fehler`
 
-Wenn du mehrere Instanzen des Blueprints verwendest, solltest du pro Instanz eine eigene **Szenen-ID für Wiederherstellung** setzen.
+## Flow
 
-## Empfohlene Fehler-Sensoren
-Nutze wenn möglich die Diagnose-Entities der Integration, zum Beispiel:
+### Leerlauf
+- Arbeitsschritt = **Leerlauf**
+- Tür auf → **Kammerlicht an**
+- Tür zu → **Kammerlicht aus**
+- Status-LED **aus**
 
-- `binary_sensor.<drucker>_print_error`
-- `binary_sensor.<drucker>_hms_errors`
+### Vorbereitung
+Folgende Arbeitsschritte werden als Vorbereitung behandelt:
 
-Diese kannst du gemeinsam im Feld **Diagnose Fehler-Sensoren** auswählen.
+- `Kühlkammer`
+- `Werkzeugkopf wird in die Mitte bewegt`
+- `Identifizierung der Bauplatte`
+- `Filament wechseln`
+- `Kalibrierung der Extrusion`
+- `Reinigung der Düsenspitze`
+- `Fegen im XY-Mechanik-Modus`
+- `Warten darauf, dass das Heizbett die Zieltemperatur erreicht`
+- `Automatische Bettnivellierung`
+- `Drucken von Kalibrierungslinien`
 
-## Fortschrittssensor
-Wenn deine Integration einen Druckfortschritt in Prozent bereitstellt, kannst du diesen beim Feld
-**Druckfortschritt Sensor (%)** auswählen. Dann kann die externe blaue Statusleuchte beim Drucken
-optional über die Helligkeit den Fortschritt anzeigen.
+Verhalten:
+- Status-LED **orange mit 50 % Helligkeit**
+- Tür auf → **Kammerlicht an**
 
-## Import
-Nutze den Badge oben oder diesen Link:
+### Druck läuft
+Wenn Druckstatus = **Läuft** oder Arbeitsschritt = **Drucken**:
+- Kammerlicht **an**, auch wenn Tür geöffnet/geschlossen wird
+- Status-LED **blau pulsierend**
+- Helligkeit beginnt bei **5 %** und steigt anhand von **Druckfortschritt** in **5-%-Schritten**
 
-```text
-https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Elemirus1996/ha-blueprint_BambuLab-P2S-Kammer-Licht/main/blueprints/bambu_lab_kammerlicht.yaml
-```
+### Fehler
+Wenn Fehler erkannt wird über:
+- `Druckstatus = Fehlgeschlagen`
+- oder Fehler-Sensoren wie `Druckfehler` / `HMS-Fehler`
 
-## Optionaler manueller Override
-Wenn du verhindern möchtest, dass die Automation dein Kammerlicht automatisch ausschaltet, lege in Home Assistant einen Helper an:
+Dann:
+- Kammerlicht **blinkt**
+- Status-LED **rot pulsierend**
+- zusätzliche Fehlerlampen **rot pulsierend**
+- nach Fehlerende werden externe Fehlerlampen optional in den vorherigen Zustand zurückgesetzt
 
-- **Typ:** Input Boolean
-- Beispiel: `input_boolean.bambu_kammerlicht_override`
+### Druck fertig
+Wenn Druckstatus = **Fertig**:
+- Status-LED **grün pulsierend**
 
-Wenn dieser Helper auf **Ein** steht, schaltet die Automation das Licht nicht automatisch aus.
+Sobald die Tür geöffnet wird:
+- Status-LED **aus**
+- Kammerlicht **an**
 
-## Externe Leuchten
-- **Externe Statusleuchte** = zeigt Druckstatus per Farbe/Pulsieren
-- **Externe Fehlerleuchten** = blinken bei Fehler zusätzlich und können danach wiederhergestellt werden
+Wenn danach wieder geschlossen wird und kein Druck läuft:
+- Kammerlicht **aus**
+- Workflow beginnt wieder von vorne
 
 ## Hinweise
-Die Bambu-Lab-Statuswerte können je nach Modell und Integration leicht variieren. Deshalb sind die **aktiven Druckzustände** im Blueprint anpassbar.
+- Die externe Statusleuchte sollte idealerweise **RGB** und **Helligkeit** unterstützen.
+- Für mehrere Blueprint-Instanzen sollte eine eigene Wiederherstellungs-Szenen-ID für Fehlerleuchten gesetzt werden.

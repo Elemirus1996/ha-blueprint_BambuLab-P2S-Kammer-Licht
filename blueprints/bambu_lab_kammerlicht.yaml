@@ -2,16 +2,8 @@ blueprint:
   name: "Bambu Lab – Kammerlicht Steuerung"
   description: >
     Steuert das Kammerlicht und optionale externe Status-/Fehlerleuchten eines
-    Bambu Lab Druckers automatisch.
-    - Kammerlicht AN wenn ein Druckauftrag startet
-    - Licht AN wenn die Kammertür geöffnet wird (auch nach Druckende zur Entnahme)
-    - Kammerlicht AUS wenn die Kammertür geschlossen wird (und kein aktiver Druck läuft)
-    - Optional: Fehlererkennung über Diagnose-Sensoren der ha-bambulab Integration
-    - Optional: Kammerlicht blinkt bei Fehler
-    - Optional: Externe Statusleuchte zeigt Druckerzustand per Farbe/Pulsieren an
-    - Optional: Mehrere externe Warnleuchten blinken bei Fehler
-    - Optional: Ursprünglichen Zustand externer Fehlerleuchten nach Fehlerende wiederherstellen
-    - Optional: Manueller Override verhindert automatisches Ausschalten
+    Bambu Lab Druckers automatisch anhand von Druckstatus, aktuellem Arbeitsschritt,
+    Türstatus und Druckfortschritt.
   domain: automation
   author: Elemirus1996
   source_url: https://raw.githubusercontent.com/Elemirus1996/ha-blueprint_BambuLab-P2S-Kammer-Licht/main/blueprints/bambu_lab_kammerlicht.yaml
@@ -23,36 +15,35 @@ blueprint:
       input:
         print_status_sensor:
           name: Druckstatus Sensor
-          description: >
-            Sensor der den aktuellen Druckstatus anzeigt.
-            Beispiel: sensor.bambu_p1s_print_status
+          description: "Beispiel: sensor.drucker_p2s_druckstatus"
+          selector:
+            entity:
+              domain: sensor
+
+        current_stage_sensor:
+          name: Aktueller Arbeitsschritt Sensor
+          description: "Beispiel: sensor.drucker_p2s_aktueller_arbeitsschritt"
           selector:
             entity:
               domain: sensor
 
         print_progress_sensor:
           name: Druckfortschritt Sensor (%)
-          description: >
-            Optionaler Fortschrittssensor der ha-bambulab Integration.
-            Beispiel: sensor.bambu_p1s_print_progress
+          description: "Beispiel: sensor.drucker_p2s_druckfortschritt"
           selector:
             entity:
               domain: sensor
 
         door_sensor:
-          name: Kammertür Sensor
-          description: >
-            Binärer Sensor für die Kammertür.
-            Beispiel: binary_sensor.bambu_p1s_door_open
+          name: Gehäusetür Sensor
+          description: "Beispiel: binary_sensor.drucker_p2s_gehausetur"
           selector:
             entity:
               domain: binary_sensor
 
         chamber_light:
-          name: Kammerlicht
-          description: >
-            Das Licht in der Druckkammer des Druckers.
-            Beispiel: light.bambu_p1s_chamber_light
+          name: Druckraumbeleuchtung
+          description: "Beispiel: light.drucker_p2s_druckraumbeleuchtung"
           selector:
             entity:
               domain: light
@@ -66,11 +57,11 @@ blueprint:
           name: Externe Statusleuchte
           description: >
             Optionale separate Leuchte für Druckerstatus.
-            AUS = Drucker inaktiv
-            Grün pulsierend = Druck fertig (nur bis Tür geöffnet wird)
+            AUS = Leerlauf
+            Orange 50 % = Vorbereitung
             Blau pulsierend = Druck läuft
-            Orange = Warnung
-            Rot = Fehler
+            Grün pulsierend = Druck fertig
+            Rot pulsierend = Fehler
           default: []
           selector:
             entity:
@@ -80,7 +71,7 @@ blueprint:
           name: Helligkeit nach Druckfortschritt
           description: >
             Wenn aktiviert, wird die Helligkeit der blauen Statusleuchte beim Drucken
-            anhand des Fortschritts (0–100 %) angepasst.
+            anhand des Fortschritts in 5-%-Schritten angepasst.
           default: true
           selector:
             boolean:
@@ -107,6 +98,27 @@ blueprint:
               unit_of_measurement: s
               mode: slider
 
+        error_pulse_seconds:
+          name: Puls-Takt Fehler (Sekunden)
+          default: 1
+          selector:
+            number:
+              min: 0.5
+              max: 10
+              step: 0.5
+              unit_of_measurement: s
+              mode: slider
+
+        status_error_brightness:
+          name: Statusleuchte Helligkeit bei Fehler
+          default: 255
+          selector:
+            number:
+              min: 1
+              max: 255
+              step: 1
+              mode: slider
+
     diagnose:
       name: "Diagnose / Fehlererkennung"
       icon: mdi:stethoscope
@@ -115,59 +127,13 @@ blueprint:
         diagnosis_error_sensors:
           name: Diagnose Fehler-Sensoren
           description: >
-            Optional. Ein oder mehrere Diagnose-Sensoren der ha-bambulab Integration.
-            Beispiele: binary_sensor.bambu_p1s_print_error, binary_sensor.bambu_p1s_hms_errors
+            Optional. Ein oder mehrere Fehler-Sensoren der Integration.
+            Beispiele: binary_sensor.drucker_p2s_druckfehler, binary_sensor.drucker_p2s_hms_fehler
           default: []
           selector:
             entity:
               domain: binary_sensor
               multiple: true
-
-        diagnosis_warning_sensors:
-          name: Diagnose Warn-Sensoren
-          description: >
-            Optional. Ein oder mehrere Sensoren/Binary-Sensoren für Warnungen.
-            Wenn einer davon aktiv ist, wird die Statusleuchte orange angezeigt.
-          default: []
-          selector:
-            entity:
-              multiple: true
-
-        failed_state:
-          name: Fallback Fehlerzustand im Druckstatus
-          description: >
-            Nur relevant, wenn keine Diagnose-Fehler-Sensoren gesetzt sind.
-          default: failed
-          selector:
-            text:
-
-    druckstatus:
-      name: "Aktive Druckzustände"
-      icon: mdi:playlist-check
-      collapsed: true
-      input:
-        active_print_states:
-          name: Aktive Druckzustände
-          description: >
-            Alle Sensor-Zustände, die als "Druck läuft / Druck aktiv" behandelt werden sollen.
-          default:
-            - printing
-            - prepare
-            - paused
-            - resume
-            - running
-          selector:
-            object:
-
-        finished_print_states:
-          name: Beendete Druckzustände
-          description: >
-            Zustände, die als normal beendet gelten.
-          default:
-            - idle
-            - finish
-          selector:
-            object:
 
     override:
       name: "Manueller Override"
@@ -190,16 +156,12 @@ blueprint:
       input:
         enable_chamber_blink:
           name: Kammerlicht blinken bei Fehler
-          description: >
-            Wenn aktiviert, blinkt das Kammerlicht bei Fehler im 2-Sekunden-Takt.
-          default: false
+          default: true
           selector:
             boolean:
 
         external_warning_lights:
           name: Externe Fehlerleuchten
-          description: >
-            Optional. Eine oder mehrere externe Leuchten für Fehleranzeige.
           default: []
           selector:
             entity:
@@ -208,18 +170,12 @@ blueprint:
 
         restore_warning_lights_after_error:
           name: Fehlerleuchten nach Fehlerende wiederherstellen
-          description: >
-            Wenn aktiviert, wird beim Fehlerbeginn eine temporäre Szene der externen Fehlerleuchten gespeichert
-            und nach Fehlerende wiederhergestellt.
           default: true
           selector:
             boolean:
 
         warning_lights_restore_scene:
           name: Szenen-ID für Wiederherstellung
-          description: >
-            Interne Szenen-ID für das Wiederherstellen der externen Fehlerleuchten.
-            Nur ändern, wenn du mehrere Instanzen des Blueprints parallel verwendest.
           default: bambu_warning_lights_restore
           selector:
             text:
@@ -230,14 +186,22 @@ blueprint:
           selector:
             color_rgb:
 
-        warning_light_blink_interval:
-          name: Blink-Takt Fehlerleuchten (Sekunden)
-          description: >
-            Sekunden zwischen AN und AUS.
-          default: 2
+        warning_light_brightness:
+          name: Fehlerleuchten Helligkeit
+          default: 255
           selector:
             number:
               min: 1
+              max: 255
+              step: 1
+              mode: slider
+
+        warning_light_blink_interval:
+          name: Blink-Takt Fehlerleuchten (Sekunden)
+          default: 1
+          selector:
+            number:
+              min: 0.5
               max: 30
               step: 0.5
               unit_of_measurement: s
@@ -245,6 +209,7 @@ blueprint:
 
 variables:
   print_status_entity: !input print_status_sensor
+  current_stage_entity: !input current_stage_sensor
   print_progress_entity: !input print_progress_sensor
   door_entity: !input door_sensor
 
@@ -252,26 +217,40 @@ variables:
   enable_progress_brightness_var: !input enable_progress_brightness
   running_pulse_seconds_var: !input running_pulse_seconds
   finished_pulse_seconds_var: !input finished_pulse_seconds
+  error_pulse_seconds_var: !input error_pulse_seconds
+  status_error_brightness_var: !input status_error_brightness
 
   diagnosis_error_sensors_var: !input diagnosis_error_sensors
-  diagnosis_warning_sensors_var: !input diagnosis_warning_sensors
-  failed_state_var: !input failed_state
-
-  active_print_states_var: !input active_print_states
-  finished_print_states_var: !input finished_print_states
-
   manual_override_helper_var: !input manual_override_helper
 
   enable_chamber_blink_var: !input enable_chamber_blink
   external_warning_lights_var: !input external_warning_lights
   restore_warning_lights_after_error_var: !input restore_warning_lights_after_error
   warning_lights_restore_scene_var: !input warning_lights_restore_scene
-  warning_light_blink_interval_var: !input warning_light_blink_interval
 
-  current_print_state: "{{ states(print_status_entity) }}"
+  print_status: "{{ states(print_status_entity) }}"
+  current_stage: "{{ states(current_stage_entity) }}"
   door_is_open: "{{ is_state(door_entity, 'on') }}"
-  print_is_active: "{{ current_print_state in active_print_states_var }}"
-  print_is_finished: "{{ current_print_state in finished_print_states_var }}"
+
+  is_idle_stage: "{{ current_stage == 'Leerlauf' }}"
+  is_running_state: "{{ print_status == 'Läuft' or current_stage == 'Drucken' }}"
+  is_prepare_state: >-
+    {{ current_stage in [
+      'Kühlkammer',
+      'Werkzeugkopf wird in die Mitte bewegt',
+      'Identifizierung der Bauplatte',
+      'Filament wechseln',
+      'Kalibrierung der Extrusion',
+      'Reinigung der Düsenspitze',
+      'Fegen im XY-Mechanik-Modus',
+      'Warten darauf, dass das Heizbett die Zieltemperatur erreicht',
+      'Automatische Bettnivellierung',
+      'Drucken von Kalibrierungslinien'
+    ] or print_status == 'Vorbereiten' }}
+  is_finished_state: "{{ print_status == 'Fertig' }}"
+  is_error_state: >-
+    {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
+    {{ sensor_error or print_status == 'Fehlgeschlagen' }}
 
   progress_value: >-
     {% if print_progress_entity is defined and print_progress_entity != [] and states(print_progress_entity) not in ['unknown','unavailable','none','None',''] %}
@@ -280,25 +259,14 @@ variables:
       0
     {% endif %}
 
-  progress_brightness: >-
+  progress_step_percent: >-
     {% set p = progress_value | float(0) %}
-    {{ [25, [255, ((p / 100) * 255) | round(0) | int] | max] | max }}
+    {% set stepped = ((p / 5) | round(0, 'floor') * 5) | int %}
+    {{ [5, [100, stepped] | min] | max }}
 
-  diagnosis_error_active: >-
-    {% if diagnosis_error_sensors_var | count > 0 %}
-      {{ expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0 }}
-    {% else %}
-      {{ current_print_state == failed_state_var }}
-    {% endif %}
-
-  diagnosis_warning_active: >-
-    {% if diagnosis_warning_sensors_var | count > 0 %}
-      {{ expand(diagnosis_warning_sensors_var)
-          | rejectattr('state', 'in', ['off', '0', 'idle', 'none', 'unknown', 'unavailable'])
-          | list | count > 0 }}
-    {% else %}
-      false
-    {% endif %}
+  progress_brightness: >-
+    {% set pct = progress_step_percent | int %}
+    {{ ((pct / 100) * 255) | round(0) | int }}
 
   manual_override_active: >-
     {% if manual_override_helper_var != [] %}
@@ -313,83 +281,27 @@ trigger:
     id: print_status_changed
 
   - platform: state
+    entity_id: !input current_stage_sensor
+    id: current_stage_changed
+
+  - platform: state
     entity_id: !input print_progress_sensor
     id: print_progress_changed
 
   - platform: state
     entity_id: !input door_sensor
-    to: "on"
-    id: door_opened
-
-  - platform: state
-    entity_id: !input door_sensor
-    to: "off"
-    id: door_closed
+    id: door_changed
 
   - platform: state
     entity_id: !input diagnosis_error_sensors
     id: diagnosis_error_changed
 
-  - platform: state
-    entity_id: !input diagnosis_warning_sensors
-    id: diagnosis_warning_changed
-
 action:
   - parallel:
       - choose:
           - conditions:
-              - condition: trigger
-                id: print_status_changed
               - condition: template
-                value_template: "{{ print_is_active }}"
-            sequence:
-              - service: light.turn_on
-                target:
-                  entity_id: !input chamber_light
-
-          - conditions:
-              - condition: trigger
-                id: print_status_changed
-              - condition: template
-                value_template: "{{ print_is_finished }}"
-              - condition: state
-                entity_id: !input door_sensor
-                state: "off"
-              - condition: template
-                value_template: "{{ not diagnosis_error_active }}"
-              - condition: template
-                value_template: "{{ not manual_override_active }}"
-            sequence:
-              - service: light.turn_off
-                target:
-                  entity_id: !input chamber_light
-
-          - conditions:
-              - condition: trigger
-                id: door_opened
-            sequence:
-              - service: light.turn_on
-                target:
-                  entity_id: !input chamber_light
-
-          - conditions:
-              - condition: trigger
-                id: door_closed
-              - condition: template
-                value_template: "{{ not print_is_active }}"
-              - condition: template
-                value_template: "{{ not diagnosis_error_active }}"
-              - condition: template
-                value_template: "{{ not manual_override_active }}"
-            sequence:
-              - service: light.turn_off
-                target:
-                  entity_id: !input chamber_light
-
-      - choose:
-          - conditions:
-              - condition: template
-                value_template: "{{ diagnosis_error_active }}"
+                value_template: "{{ is_error_state }}"
             sequence:
               - if:
                   - condition: template
@@ -408,23 +320,18 @@ action:
                       - repeat:
                           while:
                             - condition: template
-                              value_template: >-
-                                {% if diagnosis_error_sensors_var | count > 0 %}
-                                  {{ expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0 }}
-                                {% else %}
-                                  {{ states(print_status_entity) == failed_state_var }}
-                                {% endif %}
+                              value_template: "{{ is_error_state }}"
                           sequence:
                             - service: light.turn_on
                               target:
                                 entity_id: !input chamber_light
                             - delay:
-                                seconds: 2
+                                seconds: !input error_pulse_seconds
                             - service: light.turn_off
                               target:
                                 entity_id: !input chamber_light
                             - delay:
-                                seconds: 2
+                                seconds: !input error_pulse_seconds
 
                   - if:
                       - condition: template
@@ -433,18 +340,14 @@ action:
                       - repeat:
                           while:
                             - condition: template
-                              value_template: >-
-                                {% if diagnosis_error_sensors_var | count > 0 %}
-                                  {{ expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0 }}
-                                {% else %}
-                                  {{ states(print_status_entity) == failed_state_var }}
-                                {% endif %}
+                              value_template: "{{ is_error_state }}"
                           sequence:
                             - service: light.turn_on
                               target:
                                 entity_id: !input external_warning_lights
                               data:
                                 rgb_color: !input warning_light_color
+                                brightness: !input warning_light_brightness
                             - delay:
                                 seconds: !input warning_light_blink_interval
                             - service: light.turn_off
@@ -455,7 +358,7 @@ action:
 
           - conditions:
               - condition: template
-                value_template: "{{ not diagnosis_error_active }}"
+                value_template: "{{ not is_error_state }}"
             sequence:
               - choose:
                   - conditions:
@@ -473,6 +376,36 @@ action:
                         target:
                           entity_id: !input external_warning_lights
 
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ is_error_state }}"
+            sequence: []
+
+          - conditions:
+              - condition: template
+                value_template: "{{ is_running_state }}"
+            sequence:
+              - service: light.turn_on
+                target:
+                  entity_id: !input chamber_light
+
+          - conditions:
+              - condition: template
+                value_template: "{{ door_is_open }}"
+            sequence:
+              - service: light.turn_on
+                target:
+                  entity_id: !input chamber_light
+
+          - conditions:
+              - condition: template
+                value_template: "{{ not manual_override_active }}"
+            sequence:
+              - service: light.turn_off
+                target:
+                  entity_id: !input chamber_light
+
       - if:
           - condition: template
             value_template: "{{ status_light_var != [] }}"
@@ -480,42 +413,58 @@ action:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ diagnosis_error_active }}"
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: !input status_light
-                    data:
-                      rgb_color: [255, 0, 0]
-                      brightness: 255
-
-              - conditions:
-                  - condition: template
-                    value_template: "{{ diagnosis_warning_active and not diagnosis_error_active }}"
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: !input status_light
-                    data:
-                      rgb_color: [255, 165, 0]
-                      brightness: 255
-
-              - conditions:
-                  - condition: template
-                    value_template: "{{ print_is_active and not diagnosis_warning_active and not diagnosis_error_active }}"
+                    value_template: "{{ is_error_state }}"
                 sequence:
                   - repeat:
                       while:
                         - condition: template
-                          value_template: >-
-                            {{ (states(print_status_entity) in active_print_states_var)
-                               and not (
-                                 (diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0))
-                                 or
-                                 (diagnosis_warning_sensors_var | count > 0 and (expand(diagnosis_warning_sensors_var)
-                                   | rejectattr('state', 'in', ['off', '0', 'idle', 'none', 'unknown', 'unavailable'])
-                                   | list | count > 0))
-                               ) }}
+                          value_template: "{{ is_error_state }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input status_light
+                          data:
+                            rgb_color: [255, 0, 0]
+                            brightness: !input status_error_brightness
+                        - delay:
+                            seconds: !input error_pulse_seconds
+                        - service: light.turn_off
+                          target:
+                            entity_id: !input status_light
+                        - delay:
+                            seconds: !input error_pulse_seconds
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_finished_state and not door_is_open }}"
+                sequence:
+                  - repeat:
+                      while:
+                        - condition: template
+                          value_template: "{{ states(print_status_entity) == 'Fertig' and is_state(door_entity, 'off') }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input status_light
+                          data:
+                            rgb_color: [0, 255, 0]
+                            brightness: 255
+                        - delay:
+                            seconds: !input finished_pulse_seconds
+                        - service: light.turn_off
+                          target:
+                            entity_id: !input status_light
+                        - delay:
+                            seconds: !input finished_pulse_seconds
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_running_state }}"
+                sequence:
+                  - repeat:
+                      while:
+                        - condition: template
+                          value_template: "{{ states(print_status_entity) == 'Läuft' or states(current_stage_entity) == 'Drucken' }}"
                       sequence:
                         - service: light.turn_on
                           target:
@@ -538,30 +487,14 @@ action:
 
               - conditions:
                   - condition: template
-                    value_template: "{{ print_is_finished and not door_is_open and not diagnosis_warning_active and not diagnosis_error_active }}"
+                    value_template: "{{ is_prepare_state }}"
                 sequence:
-                  - repeat:
-                      while:
-                        - condition: template
-                          value_template: >-
-                            {{ (states(print_status_entity) in finished_print_states_var)
-                               and is_state(door_entity, 'off')
-                               and not diagnosis_error_active
-                               and not diagnosis_warning_active }}
-                      sequence:
-                        - service: light.turn_on
-                          target:
-                            entity_id: !input status_light
-                          data:
-                            rgb_color: [0, 255, 0]
-                            brightness: 255
-                        - delay:
-                            seconds: !input finished_pulse_seconds
-                        - service: light.turn_off
-                          target:
-                            entity_id: !input status_light
-                        - delay:
-                            seconds: !input finished_pulse_seconds
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input status_light
+                    data:
+                      rgb_color: [255, 165, 0]
+                      brightness: 128
 
             default:
               - service: light.turn_off
