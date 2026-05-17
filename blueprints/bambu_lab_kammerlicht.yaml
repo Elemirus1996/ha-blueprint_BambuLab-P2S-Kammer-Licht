@@ -4,8 +4,7 @@ blueprint:
     Steuert das Kammerlicht und optionale externe Status-/Fehlerleuchten eines
     Bambu Lab Druckers automatisch.
     - Kammerlicht AN wenn ein Druckauftrag startet
-    - Kammerlicht AUS wenn der Druckauftrag beendet ist (und Tür geschlossen)
-    - Kammerlicht AN wenn die Kammertür geöffnet wird
+    - Licht AN wenn die Kammertür geöffnet wird (auch nach Druckende zur Entnahme)
     - Kammerlicht AUS wenn die Kammertür geschlossen wird (und kein aktiver Druck läuft)
     - Optional: Fehlererkennung über Diagnose-Sensoren der ha-bambulab Integration
     - Optional: Kammerlicht blinkt bei Fehler
@@ -369,25 +368,9 @@ action:
               - condition: trigger
                 id: door_opened
             sequence:
-              - choose:
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ print_is_finished }}"
-                    sequence:
-                      - if:
-                          - condition: template
-                            value_template: "{{ not manual_override_active }}"
-                        then:
-                          - service: light.turn_off
-                            target:
-                              entity_id: !input chamber_light
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ not print_is_finished }}"
-                    sequence:
-                      - service: light.turn_on
-                        target:
-                          entity_id: !input chamber_light
+              - service: light.turn_on
+                target:
+                  entity_id: !input chamber_light
 
           - conditions:
               - condition: trigger

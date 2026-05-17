@@ -6,12 +6,12 @@ Home-Assistant-Blueprint für die **ha-bambulab** / **Bambu Lab Integration**.
 
 ## Funktionen
 - Kammerlicht **AN**, wenn ein Druck startet
-- Kammerlicht **AUS**, wenn Druck beendet ist und Tür geschlossen ist
-- Kammerlicht **AN**, wenn die Tür geöffnet wird
-- Wenn der Druck bereits **fertig** ist und die Tür geöffnet wird:
-  - **Statusleuchte AUS**
-  - **Kammerlicht AUS**, damit der Workflow wieder sauber im Idle-Zustand endet
+- Licht **AN**, wenn die Tür geöffnet wird — auch nach Druckende zur Entnahme
 - Kammerlicht **AUS**, wenn die Tür geschlossen wird und **kein aktiver Druck** läuft
+- Die **Statusleuchte** zeigt **Druck fertig** nur solange die Tür geschlossen bleibt
+- Wird die Tür nach einem fertigen Druck geöffnet:
+  - **Statusleuchte AUS**
+  - **Kammerlicht AN** zur Entnahme
 - Optional: Fehlererkennung bevorzugt über **Diagnose-Sensoren**
 - Optional: **Kammerlicht blinkt bei Fehler**
 - Optional: **separate externe Statusleuchte**
@@ -31,10 +31,6 @@ Wenn **Fehlerleuchten nach Fehlerende wiederherstellen** aktiviert ist, speicher
 über `scene.create` den aktuellen Zustand der externen Fehlerleuchten und stellt ihn nach Fehlerende wieder her.
 
 Wenn du mehrere Instanzen des Blueprints verwendest, solltest du pro Instanz eine eigene **Szenen-ID für Wiederherstellung** setzen.
-
-## Wichtige Änderung
-Die grüne Fertig-Anzeige bleibt jetzt nur aktiv, solange der Druck fertig ist **und die Tür geschlossen bleibt**.
-Wird die Tür nach einem fertigen Druck geöffnet, endet dieser Zustand und die Statusleuchte geht aus.
 
 ## Empfohlene Fehler-Sensoren
 Nutze wenn möglich die Diagnose-Entities der Integration, zum Beispiel:
