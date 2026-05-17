@@ -51,25 +51,16 @@ blueprint:
       icon: mdi:stethoscope
       collapsed: true
       input:
-        print_error_sensor:
-          name: Druckfehler Sensor
+        diagnosis_error_sensors:
+          name: Diagnose Fehler-Sensoren
           description: >
-            Optional. Diagnose-Sensor der ha-bambulab Integration.
-            Beispiel: binary_sensor.bambu_p1s_print_error
-          default: ""
+            Optional. Ein oder mehrere Diagnose-Sensoren der ha-bambulab Integration.
+            Beispiele: binary_sensor.bambu_p1s_print_error, binary_sensor.bambu_p1s_hms_errors
+          default: []
           selector:
             entity:
               domain: binary_sensor
-
-        hms_error_sensor:
-          name: HMS Fehler Sensor
-          description: >
-            Optional. Diagnose-Sensor der ha-bambulab Integration.
-            Beispiel: binary_sensor.bambu_p1s_hms_errors
-          default: ""
-          selector:
-            entity:
-              domain: binary_sensor
+              multiple: true
 
         failed_state:
           name: Fallback Fehlerzustand im Druckstatus
@@ -167,8 +158,7 @@ variables:
   print_status_entity: !input print_status_sensor
   door_entity: !input door_sensor
 
-  print_error_sensor_var: !input print_error_sensor
-  hms_error_sensor_var: !input hms_error_sensor
+  diagnosis_error_sensors_var: !input diagnosis_error_sensors
   failed_state_var: !input failed_state
 
   active_print_states_var: !input active_print_states
@@ -186,10 +176,8 @@ variables:
   print_is_finished: "{{ current_print_state in finished_print_states_var }}"
 
   diagnosis_error_active: >-
-    {% set print_err = (print_error_sensor_var != '' and is_state(print_error_sensor_var, 'on')) %}
-    {% set hms_err = (hms_error_sensor_var != '' and is_state(hms_error_sensor_var, 'on')) %}
-    {% if print_error_sensor_var != '' or hms_error_sensor_var != '' %}
-      {{ print_err or hms_err }}
+    {% if diagnosis_error_sensors_var | count > 0 %}
+      {{ expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0 }}
     {% else %}
       {{ current_print_state == failed_state_var }}
     {% endif %}
@@ -217,12 +205,8 @@ trigger:
     id: door_closed
 
   - platform: state
-    entity_id: !input print_error_sensor
-    id: print_error_changed
-
-  - platform: state
-    entity_id: !input hms_error_sensor
-    id: hms_error_changed
+    entity_id: !input diagnosis_error_sensors
+    id: diagnosis_error_changed
 
 action:
   - choose:
@@ -267,10 +251,8 @@ action:
                       while:
                         - condition: template
                           value_template: >-
-                            {% set print_err = (print_error_sensor_var != '' and is_state(print_error_sensor_var, 'on')) %}
-                            {% set hms_err = (hms_error_sensor_var != '' and is_state(hms_error_sensor_var, 'on')) %}
-                            {% if print_error_sensor_var != '' or hms_error_sensor_var != '' %}
-                              {{ print_err or hms_err }}
+                            {% if diagnosis_error_sensors_var | count > 0 %}
+                              {{ expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0 }}
                             {% else %}
                               {{ states(print_status_entity) == failed_state_var }}
                             {% endif %}
@@ -294,10 +276,8 @@ action:
                       while:
                         - condition: template
                           value_template: >-
-                            {% set print_err = (print_error_sensor_var != '' and is_state(print_error_sensor_var, 'on')) %}
-                            {% set hms_err = (hms_error_sensor_var != '' and is_state(hms_error_sensor_var, 'on')) %}
-                            {% if print_error_sensor_var != '' or hms_error_sensor_var != '' %}
-                              {{ print_err or hms_err }}
+                            {% if diagnosis_error_sensors_var | count > 0 %}
+                              {{ expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0 }}
                             {% else %}
                               {{ states(print_status_entity) == failed_state_var }}
                             {% endif %}

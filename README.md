@@ -15,13 +15,18 @@ Home-Assistant-Blueprint für die **ha-bambulab** / **Bambu Lab Integration**.
 - Optional: **manueller Override** über `input_boolean`
 - Konfigurierbare **aktive Druckzustände**
 
+## Wichtige Änderung
+Die Fehler-Sensoren werden jetzt als **Liste mehrerer Diagnose-Sensoren** konfiguriert. Dadurch werden keine leeren optionalen Entity-IDs mehr als Trigger verwendet.
+
 ## Empfohlene Fehler-Sensoren
 Nutze wenn möglich die Diagnose-Entities der Integration, zum Beispiel:
 
 - `binary_sensor.<drucker>_print_error`
 - `binary_sensor.<drucker>_hms_errors`
 
-Wenn diese nicht gesetzt sind, nutzt das Blueprint optional den Fallback über den Druckstatus `failed`.
+Diese kannst du jetzt gemeinsam im Feld **Diagnose Fehler-Sensoren** auswählen.
+
+Wenn keine Diagnose-Sensoren gesetzt sind, nutzt das Blueprint optional den Fallback über den Druckstatus `failed`.
 
 ## Import
 Nutze den Badge oben oder diesen Link:
