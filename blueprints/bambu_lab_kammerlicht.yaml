@@ -6,8 +6,9 @@ blueprint:
     - Licht AUS wenn der Druckauftrag beendet ist (und Tür geschlossen)
     - Licht AN wenn die Kammertür geöffnet wird
     - Licht AUS wenn die Kammertür geschlossen wird (und kein aktiver Druck läuft)
+    - Optional: Fehlererkennung über Diagnose-Sensoren der ha-bambulab Integration
     - Optional: Kammerlicht blinkt bei Fehler
-    - Optional: Zusätzliche Warnleuchte mit Farbe und Blink-Takt bei Fehler
+    - Optional: Mehrere externe Warnleuchten mit Farbe und Blink-Takt bei Fehler
     - Optional: Manueller Override verhindert automatisches Ausschalten
   domain: automation
   author: Elemirus1996
@@ -45,6 +46,39 @@ blueprint:
             entity:
               domain: light
 
+    diagnose:
+      name: "Diagnose / Fehlererkennung"
+      icon: mdi:stethoscope
+      collapsed: true
+      input:
+        print_error_sensor:
+          name: Druckfehler Sensor
+          description: >
+            Optional. Diagnose-Sensor der ha-bambulab Integration.
+            Beispiel: binary_sensor.bambu_p1s_print_error
+          default: ""
+          selector:
+            entity:
+              domain: binary_sensor
+
+        hms_error_sensor:
+          name: HMS Fehler Sensor
+          description: >
+            Optional. Diagnose-Sensor der ha-bambulab Integration.
+            Beispiel: binary_sensor.bambu_p1s_hms_errors
+          default: ""
+          selector:
+            entity:
+              domain: binary_sensor
+
+        failed_state:
+          name: Fallback Fehlerzustand im Druckstatus
+          description: >
+            Nur relevant, wenn keine Diagnose-Sensoren gesetzt sind.
+          default: failed
+          selector:
+            text:
+
     druckstatus:
       name: "Aktive Druckzustände"
       icon: mdi:playlist-check
@@ -54,7 +88,6 @@ blueprint:
           name: Aktive Druckzustände
           description: >
             Alle Sensor-Zustände, die als "Druck läuft / Druck aktiv" behandelt werden sollen.
-            Passe diese Liste an deine Bambu Lab Integration an.
           default:
             - printing
             - prepare
@@ -74,14 +107,6 @@ blueprint:
           selector:
             object:
 
-        failed_state:
-          name: Fehlerzustand
-          description: >
-            Sensor-Zustand, der einen Druckfehler signalisiert.
-          default: failed
-          selector:
-            text:
-
     override:
       name: "Manueller Override"
       icon: mdi:hand-back-right
@@ -91,7 +116,6 @@ blueprint:
           name: Input Boolean für manuellen Override
           description: >
             Optional. Wenn dieser Helper auf EIN steht, schaltet die Automation das Kammerlicht nicht automatisch aus.
-            Beispiel: input_boolean.bambu_kammerlicht_override
           default: ""
           selector:
             entity:
@@ -110,31 +134,24 @@ blueprint:
           selector:
             boolean:
 
-        enable_warning_light:
-          name: Zusätzliche Warnleuchte aktivieren
+        external_warning_lights:
+          name: Externe Warnleuchten
           description: >
-            Wenn aktiviert, wird bei Fehler eine weitere Leuchte angesteuert.
-          default: false
-          selector:
-            boolean:
-
-        warning_light:
-          name: Warnleuchte
-          description: >
-            Zusätzliche Leuchte für Fehleranzeige.
-          default: ""
+            Optional. Eine oder mehrere externe Leuchten für Fehleranzeige.
+          default: []
           selector:
             entity:
+              multiple: true
               domain: light
 
         warning_light_color:
-          name: Warnleuchte Farbe
+          name: Warnleuchten Farbe
           default: [255, 0, 0]
           selector:
             color_rgb:
 
         warning_light_blink_interval:
-          name: Blink-Takt Warnleuchte (Sekunden)
+          name: Blink-Takt Warnleuchten (Sekunden)
           description: >
             Sekunden zwischen AN und AUS.
           default: 2
@@ -149,24 +166,34 @@ blueprint:
 variables:
   print_status_entity: !input print_status_sensor
   door_entity: !input door_sensor
-  chamber_light_entity: !input chamber_light
+
+  print_error_sensor_var: !input print_error_sensor
+  hms_error_sensor_var: !input hms_error_sensor
+  failed_state_var: !input failed_state
 
   active_print_states_var: !input active_print_states
   finished_print_states_var: !input finished_print_states
-  failed_state_var: !input failed_state
 
   manual_override_helper_var: !input manual_override_helper
 
   enable_chamber_blink_var: !input enable_chamber_blink
-  enable_warning_light_var: !input enable_warning_light
-  warning_light_var: !input warning_light
+  external_warning_lights_var: !input external_warning_lights
   warning_light_blink_interval_var: !input warning_light_blink_interval
 
   current_print_state: "{{ states(print_status_entity) }}"
   door_is_open: "{{ is_state(door_entity, 'on') }}"
   print_is_active: "{{ current_print_state in active_print_states_var }}"
-  print_has_failed: "{{ current_print_state == failed_state_var }}"
   print_is_finished: "{{ current_print_state in finished_print_states_var }}"
+
+  diagnosis_error_active: >-
+    {% set print_err = (print_error_sensor_var != '' and is_state(print_error_sensor_var, 'on')) %}
+    {% set hms_err = (hms_error_sensor_var != '' and is_state(hms_error_sensor_var, 'on')) %}
+    {% if print_error_sensor_var != '' or hms_error_sensor_var != '' %}
+      {{ print_err or hms_err }}
+    {% else %}
+      {{ current_print_state == failed_state_var }}
+    {% endif %}
+
   manual_override_active: >-
     {% if manual_override_helper_var != '' %}
       {{ is_state(manual_override_helper_var, 'on') }}
@@ -188,6 +215,14 @@ trigger:
     entity_id: !input door_sensor
     to: "off"
     id: door_closed
+
+  - platform: state
+    entity_id: !input print_error_sensor
+    id: print_error_changed
+
+  - platform: state
+    entity_id: !input hms_error_sensor
+    id: hms_error_changed
 
 action:
   - choose:
@@ -211,6 +246,8 @@ action:
             entity_id: !input door_sensor
             state: "off"
           - condition: template
+            value_template: "{{ not diagnosis_error_active }}"
+          - condition: template
             value_template: "{{ not manual_override_active }}"
         sequence:
           - service: light.turn_off
@@ -218,10 +255,8 @@ action:
               entity_id: !input chamber_light
 
       - conditions:
-          - condition: trigger
-            id: print_status_changed
           - condition: template
-            value_template: "{{ print_has_failed }}"
+            value_template: "{{ diagnosis_error_active }}"
         sequence:
           - parallel:
               - if:
@@ -231,7 +266,14 @@ action:
                   - repeat:
                       while:
                         - condition: template
-                          value_template: "{{ states(print_status_entity) == failed_state_var }}"
+                          value_template: >-
+                            {% set print_err = (print_error_sensor_var != '' and is_state(print_error_sensor_var, 'on')) %}
+                            {% set hms_err = (hms_error_sensor_var != '' and is_state(hms_error_sensor_var, 'on')) %}
+                            {% if print_error_sensor_var != '' or hms_error_sensor_var != '' %}
+                              {{ print_err or hms_err }}
+                            {% else %}
+                              {{ states(print_status_entity) == failed_state_var }}
+                            {% endif %}
                       sequence:
                         - service: light.turn_on
                           target:
@@ -246,39 +288,44 @@ action:
 
               - if:
                   - condition: template
-                    value_template: "{{ enable_warning_light_var and warning_light_var != '' }}"
+                    value_template: "{{ external_warning_lights_var | count > 0 }}"
                 then:
                   - repeat:
                       while:
                         - condition: template
-                          value_template: "{{ states(print_status_entity) == failed_state_var }}"
+                          value_template: >-
+                            {% set print_err = (print_error_sensor_var != '' and is_state(print_error_sensor_var, 'on')) %}
+                            {% set hms_err = (hms_error_sensor_var != '' and is_state(hms_error_sensor_var, 'on')) %}
+                            {% if print_error_sensor_var != '' or hms_error_sensor_var != '' %}
+                              {{ print_err or hms_err }}
+                            {% else %}
+                              {{ states(print_status_entity) == failed_state_var }}
+                            {% endif %}
                       sequence:
                         - service: light.turn_on
                           target:
-                            entity_id: !input warning_light
+                            entity_id: !input external_warning_lights
                           data:
                             rgb_color: !input warning_light_color
                         - delay:
                             seconds: !input warning_light_blink_interval
                         - service: light.turn_off
                           target:
-                            entity_id: !input warning_light
+                            entity_id: !input external_warning_lights
                         - delay:
                             seconds: !input warning_light_blink_interval
 
       - conditions:
-          - condition: trigger
-            id: print_status_changed
           - condition: template
-            value_template: "{{ not print_has_failed }}"
+            value_template: "{{ not diagnosis_error_active }}"
         sequence:
           - if:
               - condition: template
-                value_template: "{{ enable_warning_light_var and warning_light_var != '' }}"
+                value_template: "{{ external_warning_lights_var | count > 0 }}"
             then:
               - service: light.turn_off
                 target:
-                  entity_id: !input warning_light
+                  entity_id: !input external_warning_lights
 
           - choose:
               - conditions:
@@ -311,7 +358,7 @@ action:
           - condition: template
             value_template: "{{ not print_is_active }}"
           - condition: template
-            value_template: "{{ not print_has_failed }}"
+            value_template: "{{ not diagnosis_error_active }}"
           - condition: template
             value_template: "{{ not manual_override_active }}"
         sequence:
