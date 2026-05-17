@@ -6,37 +6,98 @@ blueprint:
     - Licht AUS wenn der Druckauftrag beendet ist (und Tür geschlossen)
     - Licht AN wenn die Kammertür geöffnet wird
     - Licht AUS wenn die Kammertür geschlossen wird (und kein Druck läuft)
+    - Optional: Kammerlicht blinkt im 2-Sekunden-Takt bei einem Druckfehler
+    - Optional: Zusätzliche Warnleuchte mit einstellbarer Farbe und Blink-Takt bei Fehler
   domain: automation
   author: Elemirus1996
+  source_url: https://github.com/Elemirus1996/ha-blueprint_BambuLab-P2S-Kammer-Licht/blob/main/blueprints/bambu_lab_kammerlicht.yaml
+
   input:
-    print_status_sensor:
-      name: Druckstatus Sensor
-      description: >
-        Sensor der den aktuellen Druckstatus anzeigt.
-        (z. B. sensor.bambu_p1s_print_status)
-      selector:
-        entity:
-          domain: sensor
-    door_sensor:
-      name: Kammertür Sensor
-      description: >
-        Binärer Sensor für die Kammertür.
-        (z. B. binary_sensor.bambu_p1s_door_open)
-      selector:
-        entity:
-          domain: binary_sensor
-    chamber_light:
-      name: Kammerlicht
-      description: >
-        Das Licht in der Druckkammer.
-        (z. B. light.bambu_p1s_chamber_light)
-      selector:
-        entity:
-          domain: light
+
+    # ── Basis-Einstellungen ────────────────────────────────────────────────
+    basis:
+      name: "Basis-Einstellungen"
+      icon: mdi:printer-3d
+      input:
+        print_status_sensor:
+          name: Druckstatus Sensor
+          description: >
+            Sensor der den aktuellen Druckstatus anzeigt.
+            (z. B. sensor.bambu_p1s_print_status)
+          selector:
+            entity:
+              domain: sensor
+
+        door_sensor:
+          name: Kammertür Sensor
+          description: >
+            Binärer Sensor für die Kammertür.
+            (z. B. binary_sensor.bambu_p1s_door_open)
+          selector:
+            entity:
+              domain: binary_sensor
+
+        chamber_light:
+          name: Kammerlicht
+          description: >
+            Das Licht in der Druckkammer.
+            (z. B. light.bambu_p1s_chamber_light)
+          selector:
+            entity:
+              domain: light
+
+    # ── Fehler-Einstellungen ───────────────────────────────────────────────
+    fehler:
+      name: "Fehler-Einstellungen"
+      icon: mdi:alert-circle
+      collapsed: true
+      input:
+        enable_chamber_blink:
+          name: "Kammerlicht blinken bei Fehler"
+          description: "Das Kammerlicht blinkt im 2-Sekunden-Takt solange ein Druckfehler aktiv ist."
+          default: false
+          selector:
+            boolean:
+
+        enable_warning_light:
+          name: "Zusätzliche Warnleuchte aktivieren"
+          description: "Eine weitere Leuchte bei Fehler ansteuern (z. B. eine farbige Lampe)."
+          default: false
+          selector:
+            boolean:
+
+        warning_light:
+          name: "Warnleuchte"
+          description: "Die zusätzliche Leuchte die bei einem Fehler blinkt. Nur relevant wenn 'Warnleuchte aktivieren' eingeschaltet ist."
+          default: ""
+          selector:
+            entity:
+              domain: light
+
+        warning_light_color:
+          name: "Warnleuchte Farbe"
+          description: "Farbe der Warnleuchte während eines Fehlers."
+          default: [255, 0, 0]
+          selector:
+            color_rgb:
+
+        warning_light_blink_interval:
+          name: "Blink-Takt der Warnleuchte (Sekunden)"
+          description: "Wie viele Sekunden zwischen An und Aus der Warnleuchte. Mindest: 1 Sek., Maximum: 30 Sek."
+          default: 2
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 0.5
+              unit_of_measurement: "s"
+              mode: slider
 
 variables:
-  print_status_sensor: !input print_status_sensor
-  door_sensor: !input door_sensor
+  enable_chamber_blink: !input enable_chamber_blink
+  enable_warning_light: !input enable_warning_light
+  warning_light: !input warning_light
+  warning_light_blink_interval: !input warning_light_blink_interval
 
 trigger:
   - platform: state
@@ -49,8 +110,17 @@ trigger:
     to:
       - "idle"
       - "finish"
-      - "failed"
     id: druck_beendet
+
+  - platform: state
+    entity_id: !input print_status_sensor
+    to: "failed"
+    id: druck_fehler
+
+  - platform: state
+    entity_id: !input print_status_sensor
+    from: "failed"
+    id: fehler_behoben
 
   - platform: state
     entity_id: !input door_sensor
@@ -74,7 +144,7 @@ action:
             target:
               entity_id: !input chamber_light
 
-      # ── Druckauftrag beendet → Licht AUS (nur wenn Tür zu) ───────────────
+      # ── Druckauftrag normal beendet → Licht AUS (nur wenn Tür zu) ────────
       - conditions:
           - condition: trigger
             id: druck_beendet
@@ -86,6 +156,92 @@ action:
             target:
               entity_id: !input chamber_light
 
+      # ── Druckfehler → Blinken starten ────────────────────────────────────
+      - conditions:
+          - condition: trigger
+            id: druck_fehler
+        sequence:
+          - parallel:
+
+              # Kammerlicht blinken (wenn aktiviert)
+              - if:
+                  - condition: template
+                    value_template: "{{ enable_chamber_blink }}"
+                then:
+                  - repeat:
+                      while:
+                        - condition: state
+                          entity_id: !input print_status_sensor
+                          state: "failed"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input chamber_light
+                        - delay:
+                            seconds: 2
+                        - service: light.turn_off
+                          target:
+                            entity_id: !input chamber_light
+                        - delay:
+                            seconds: 2
+
+              # Warnleuchte blinken (wenn aktiviert)
+              - if:
+                  - condition: template
+                    value_template: "{{ enable_warning_light and warning_light != '' }}"
+                then:
+                  - repeat:
+                      while:
+                        - condition: state
+                          entity_id: !input print_status_sensor
+                          state: "failed"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input warning_light
+                          data:
+                            rgb_color: !input warning_light_color
+                        - delay:
+                            seconds: "{{ warning_light_blink_interval }}"
+                        - service: light.turn_off
+                          target:
+                            entity_id: !input warning_light
+                        - delay:
+                            seconds: "{{ warning_light_blink_interval }}"
+
+      # ── Fehler behoben → Lichter zurücksetzen ────────────────────────────
+      - conditions:
+          - condition: trigger
+            id: fehler_behoben
+        sequence:
+          # Warnleuchte aus
+          - if:
+              - condition: template
+                value_template: "{{ enable_warning_light and warning_light != '' }}"
+            then:
+              - service: light.turn_off
+                target:
+                  entity_id: !input warning_light
+          # Kammerlicht: an wenn Druck läuft oder Tür offen, sonst aus
+          - choose:
+              - conditions:
+                  - condition: or
+                    conditions:
+                      - condition: state
+                        entity_id: !input print_status_sensor
+                        state: "printing"
+                      - condition: state
+                        entity_id: !input door_sensor
+                        state: "on"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input chamber_light
+            default:
+              - service: light.turn_off
+                target:
+                  entity_id: !input chamber_light
+
       # ── Tür geöffnet → Licht AN ──────────────────────────────────────────
       - conditions:
           - condition: trigger
@@ -95,19 +251,24 @@ action:
             target:
               entity_id: !input chamber_light
 
-      # ── Tür geschlossen → Licht AUS (nur wenn kein Druck läuft) ─────────
+      # ── Tür geschlossen → Licht AUS (nur wenn kein Druck und kein Fehler) ─
       - conditions:
           - condition: trigger
             id: tuer_geschlossen
         sequence:
           - condition: not
             conditions:
-              - condition: state
-                entity_id: !input print_status_sensor
-                state: "printing"
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity_id: !input print_status_sensor
+                    state: "printing"
+                  - condition: state
+                    entity_id: !input print_status_sensor
+                    state: "failed"
           - service: light.turn_off
             target:
               entity_id: !input chamber_light
 
-mode: queued
-max: 5
+mode: parallel
+max: 10
