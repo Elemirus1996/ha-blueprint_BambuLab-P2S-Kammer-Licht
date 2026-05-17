@@ -11,6 +11,7 @@ blueprint:
     - Optional: Kammerlicht blinkt bei Fehler
     - Optional: Externe Statusleuchte zeigt Druckerzustand per Farbe/Pulsieren an
     - Optional: Mehrere externe Warnleuchten blinken bei Fehler
+    - Optional: Ursprünglichen Zustand externer Fehlerleuchten nach Fehlerende wiederherstellen
     - Optional: Manueller Override verhindert automatisches Ausschalten
   domain: automation
   author: Elemirus1996
@@ -206,6 +207,24 @@ blueprint:
               multiple: true
               domain: light
 
+        restore_warning_lights_after_error:
+          name: Fehlerleuchten nach Fehlerende wiederherstellen
+          description: >
+            Wenn aktiviert, wird beim Fehlerbeginn eine temporäre Szene der externen Fehlerleuchten gespeichert
+            und nach Fehlerende wiederhergestellt.
+          default: true
+          selector:
+            boolean:
+
+        warning_lights_restore_scene:
+          name: Szenen-ID für Wiederherstellung
+          description: >
+            Interne Szenen-ID für das Wiederherstellen der externen Fehlerleuchten.
+            Nur ändern, wenn du mehrere Instanzen des Blueprints parallel verwendest.
+          default: bambu_warning_lights_restore
+          selector:
+            text:
+
         warning_light_color:
           name: Fehlerleuchten Farbe
           default: [255, 0, 0]
@@ -246,6 +265,8 @@ variables:
 
   enable_chamber_blink_var: !input enable_chamber_blink
   external_warning_lights_var: !input external_warning_lights
+  restore_warning_lights_after_error_var: !input restore_warning_lights_after_error
+  warning_lights_restore_scene_var: !input warning_lights_restore_scene
   warning_light_blink_interval_var: !input warning_light_blink_interval
 
   current_print_state: "{{ states(print_status_entity) }}"
@@ -387,6 +408,15 @@ action:
               - condition: template
                 value_template: "{{ diagnosis_error_active }}"
             sequence:
+              - if:
+                  - condition: template
+                    value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var and trigger.id == 'diagnosis_error_changed' }}"
+                then:
+                  - service: scene.create
+                    data:
+                      scene_id: !input warning_lights_restore_scene
+                      snapshot_entities: !input external_warning_lights
+
               - parallel:
                   - if:
                       - condition: template
@@ -444,13 +474,21 @@ action:
               - condition: template
                 value_template: "{{ not diagnosis_error_active }}"
             sequence:
-              - if:
-                  - condition: template
-                    value_template: "{{ external_warning_lights_var | count > 0 }}"
-                then:
-                  - service: light.turn_off
-                    target:
-                      entity_id: !input external_warning_lights
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var and trigger.id == 'diagnosis_error_changed' }}"
+                    sequence:
+                      - service: scene.turn_on
+                        target:
+                          entity_id: "scene.{{ warning_lights_restore_scene_var }}"
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ external_warning_lights_var | count > 0 }}"
+                    sequence:
+                      - service: light.turn_off
+                        target:
+                          entity_id: !input external_warning_lights
 
       - if:
           - condition: template

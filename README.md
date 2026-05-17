@@ -22,8 +22,15 @@ Home-Assistant-Blueprint für die **ha-bambulab** / **Bambu Lab Integration**.
   - **Orange** = Warnung
   - **Rot** = Fehler
 - Optional: **mehrere externe Fehlerleuchten** mit Farbe und Blinkintervall
+- Optional: **ursprünglichen Zustand externer Fehlerleuchten nach Fehlerende wiederherstellen**
 - Optional: **manueller Override** über `input_boolean`
 - Konfigurierbare **aktive Druckzustände**
+
+## Wiederherstellung der Fehlerleuchten
+Wenn **Fehlerleuchten nach Fehlerende wiederherstellen** aktiviert ist, speichert das Blueprint beim Fehlerbeginn
+über `scene.create` den aktuellen Zustand der externen Fehlerleuchten und stellt ihn nach Fehlerende wieder her.
+
+Wenn du mehrere Instanzen des Blueprints verwendest, solltest du pro Instanz eine eigene **Szenen-ID für Wiederherstellung** setzen.
 
 ## Wichtige Änderung
 Die grüne Fertig-Anzeige bleibt jetzt nur aktiv, solange der Druck fertig ist **und die Tür geschlossen bleibt**.
@@ -59,7 +66,7 @@ Wenn dieser Helper auf **Ein** steht, schaltet die Automation das Licht nicht au
 
 ## Externe Leuchten
 - **Externe Statusleuchte** = zeigt Druckstatus per Farbe/Pulsieren
-- **Externe Fehlerleuchten** = blinken bei Fehler zusätzlich
+- **Externe Fehlerleuchten** = blinken bei Fehler zusätzlich und können danach wiederhergestellt werden
 
 ## Hinweise
 Die Bambu-Lab-Statuswerte können je nach Modell und Integration leicht variieren. Deshalb sind die **aktiven Druckzustände** im Blueprint anpassbar.
