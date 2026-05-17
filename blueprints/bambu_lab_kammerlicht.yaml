@@ -67,7 +67,7 @@ blueprint:
           description: >
             Optionale separate Leuchte für Druckerstatus.
             AUS = Drucker inaktiv
-            Grün pulsierend = Druck fertig
+            Grün pulsierend = Druck fertig (nur bis Tür geöffnet wird)
             Blau pulsierend = Druck läuft
             Orange = Warnung
             Rot = Fehler
@@ -348,9 +348,25 @@ action:
               - condition: trigger
                 id: door_opened
             sequence:
-              - service: light.turn_on
-                target:
-                  entity_id: !input chamber_light
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ print_is_finished }}"
+                    sequence:
+                      - if:
+                          - condition: template
+                            value_template: "{{ not manual_override_active }}"
+                        then:
+                          - service: light.turn_off
+                            target:
+                              entity_id: !input chamber_light
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ not print_is_finished }}"
+                    sequence:
+                      - service: light.turn_on
+                        target:
+                          entity_id: !input chamber_light
 
           - conditions:
               - condition: trigger
@@ -441,7 +457,6 @@ action:
             value_template: "{{ status_light_var != [] }}"
         then:
           - choose:
-              # Fehler = Rot
               - conditions:
                   - condition: template
                     value_template: "{{ diagnosis_error_active }}"
@@ -453,7 +468,6 @@ action:
                       rgb_color: [255, 0, 0]
                       brightness: 255
 
-              # Warnung = Orange
               - conditions:
                   - condition: template
                     value_template: "{{ diagnosis_warning_active and not diagnosis_error_active }}"
@@ -465,7 +479,6 @@ action:
                       rgb_color: [255, 165, 0]
                       brightness: 255
 
-              # Druck läuft = Blau pulsierend, optional mit Fortschrittshelligkeit
               - conditions:
                   - condition: template
                     value_template: "{{ print_is_active and not diagnosis_warning_active and not diagnosis_error_active }}"
@@ -502,16 +515,16 @@ action:
                         - delay:
                             seconds: !input running_pulse_seconds
 
-              # Druck fertig = Grün pulsierend
               - conditions:
                   - condition: template
-                    value_template: "{{ print_is_finished and not diagnosis_warning_active and not diagnosis_error_active }}"
+                    value_template: "{{ print_is_finished and not door_is_open and not diagnosis_warning_active and not diagnosis_error_active }}"
                 sequence:
                   - repeat:
                       while:
                         - condition: template
                           value_template: >-
                             {{ (states(print_status_entity) in finished_print_states_var)
+                               and is_state(door_entity, 'off')
                                and not diagnosis_error_active
                                and not diagnosis_warning_active }}
                       sequence:
