@@ -1,0 +1,113 @@
+blueprint:
+  name: "Bambu Lab – Kammerlicht Steuerung"
+  description: >
+    Steuert das Kammerlicht des Bambu Lab Druckers automatisch:
+    - Licht AN wenn ein Druckauftrag startet
+    - Licht AUS wenn der Druckauftrag beendet ist (und Tür geschlossen)
+    - Licht AN wenn die Kammertür geöffnet wird
+    - Licht AUS wenn die Kammertür geschlossen wird (und kein Druck läuft)
+  domain: automation
+  author: Elemirus1996
+  input:
+    print_status_sensor:
+      name: Druckstatus Sensor
+      description: >
+        Sensor der den aktuellen Druckstatus anzeigt.
+        (z. B. sensor.bambu_p1s_print_status)
+      selector:
+        entity:
+          domain: sensor
+    door_sensor:
+      name: Kammertür Sensor
+      description: >
+        Binärer Sensor für die Kammertür.
+        (z. B. binary_sensor.bambu_p1s_door_open)
+      selector:
+        entity:
+          domain: binary_sensor
+    chamber_light:
+      name: Kammerlicht
+      description: >
+        Das Licht in der Druckkammer.
+        (z. B. light.bambu_p1s_chamber_light)
+      selector:
+        entity:
+          domain: light
+
+variables:
+  print_status_sensor: !input print_status_sensor
+  door_sensor: !input door_sensor
+
+trigger:
+  - platform: state
+    entity_id: !input print_status_sensor
+    to: "printing"
+    id: druck_gestartet
+
+  - platform: state
+    entity_id: !input print_status_sensor
+    to:
+      - "idle"
+      - "finish"
+      - "failed"
+    id: druck_beendet
+
+  - platform: state
+    entity_id: !input door_sensor
+    to: "on"
+    id: tuer_geoeffnet
+
+  - platform: state
+    entity_id: !input door_sensor
+    to: "off"
+    id: tuer_geschlossen
+
+action:
+  - choose:
+
+      # ── Druckauftrag gestartet → Licht AN ────────────────────────────────
+      - conditions:
+          - condition: trigger
+            id: druck_gestartet
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input chamber_light
+
+      # ── Druckauftrag beendet → Licht AUS (nur wenn Tür zu) ───────────────
+      - conditions:
+          - condition: trigger
+            id: druck_beendet
+        sequence:
+          - condition: state
+            entity_id: !input door_sensor
+            state: "off"
+          - service: light.turn_off
+            target:
+              entity_id: !input chamber_light
+
+      # ── Tür geöffnet → Licht AN ──────────────────────────────────────────
+      - conditions:
+          - condition: trigger
+            id: tuer_geoeffnet
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input chamber_light
+
+      # ── Tür geschlossen → Licht AUS (nur wenn kein Druck läuft) ─────────
+      - conditions:
+          - condition: trigger
+            id: tuer_geschlossen
+        sequence:
+          - condition: not
+            conditions:
+              - condition: state
+                entity_id: !input print_status_sensor
+                state: "printing"
+          - service: light.turn_off
+            target:
+              entity_id: !input chamber_light
+
+mode: queued
+max: 5
