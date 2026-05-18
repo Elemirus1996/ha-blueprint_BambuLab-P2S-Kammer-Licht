@@ -15,10 +15,36 @@ Getestet bzw. ausgelegt auf folgende Entitäten der Integration:
 - `binary_sensor.drucker_p2s_druckfehler`
 - `binary_sensor.drucker_p2s_hms_fehler`
 
+## Verwendete echte Enum-Werte
+Das Blueprint arbeitet mit den technischen Statuswerten der Integration, nicht mit den übersetzten Anzeigenamen.
+
+### Druckstatus
+- `prepare`
+- `running`
+- `pause`
+- `finish`
+- `failed`
+- `idle`
+- `offline`
+
+### Aktueller Arbeitsschritt
+Beispiele:
+- `idle`
+- `printing`
+- `cooling_chamber`
+- `moving_toolhead_to_center_of_heatbed`
+- `identifying_build_plate_type`
+- `changing_filament`
+- `calibrating_extrusion`
+- `sweeping_xy_mech_mode`
+- `waiting_for_heatbed_temperature`
+- `auto_bed_leveling`
+- `print_calibration_lines`
+
 ## Flow
 
 ### Leerlauf
-- Arbeitsschritt = **Leerlauf**
+- Arbeitsschritt = `idle`
 - Tür auf → **Kammerlicht an**
 - Tür zu → **Kammerlicht aus**
 - Status-LED **aus**
@@ -26,16 +52,22 @@ Getestet bzw. ausgelegt auf folgende Entitäten der Integration:
 ### Vorbereitung
 Folgende Arbeitsschritte werden als Vorbereitung behandelt:
 
-- `Kühlkammer`
-- `Werkzeugkopf wird in die Mitte bewegt`
-- `Identifizierung der Bauplatte`
-- `Filament wechseln`
-- `Kalibrierung der Extrusion`
-- `Reinigung der Düsenspitze`
-- `Fegen im XY-Mechanik-Modus`
-- `Warten darauf, dass das Heizbett die Zieltemperatur erreicht`
-- `Automatische Bettnivellierung`
-- `Drucken von Kalibrierungslinien`
+- `cooling_chamber`
+- `moving_toolhead_to_center_of_heatbed`
+- `identifying_build_plate_type`
+- `changing_filament`
+- `calibrating_extrusion`
+- `sweeping_xy_mech_mode`
+- `waiting_for_heatbed_temperature`
+- `auto_bed_leveling`
+- `print_calibration_lines`
+- `cleaning_nozzle_plate`
+- `cleaning_nozzle_tip`
+- `heatbed_preheating`
+- `heating_hotend`
+- `checking_extruder_temperature`
+- `purifying_chamber_air`
+- `checking_print_surface`
 
 Verhalten:
 - Status-LED **orange mit 50 % Helligkeit**
@@ -43,14 +75,14 @@ Verhalten:
 - Tür zu → **Kammerlicht aus**
 
 ### Druck läuft / Pause
-Wenn Druckstatus = **Läuft** oder **Pause** oder Arbeitsschritt = **Drucken**:
+Wenn Druckstatus = `running` oder `pause` oder Arbeitsschritt = `printing`:
 - Kammerlicht **an**, auch wenn Tür geöffnet/geschlossen wird
 - Status-LED **blau pulsierend**
 - Helligkeit beginnt bei **5 %** und steigt anhand von **Druckfortschritt** in **5-%-Schritten**
 
 ### Fehler
 Wenn Fehler erkannt wird über:
-- `Druckstatus = Fehlgeschlagen`
+- `Druckstatus = failed`
 - oder Fehler-Sensoren wie `Druckfehler` / `HMS-Fehler`
 
 Dann:
@@ -60,17 +92,13 @@ Dann:
 - nach Fehlerende werden externe Fehlerlampen optional in den vorherigen Zustand zurückgesetzt
 
 ### Druck fertig
-Wenn Druckstatus = **Fertig**:
-- Status-LED **grün pulsierend**, solange die Tür geschlossen ist und der Arbeitsschritt noch **nicht Leerlauf** ist
+Wenn Druckstatus = `finish`:
+- Status-LED **grün pulsierend**, solange die Tür geschlossen ist und der Arbeitsschritt noch **nicht `idle`** ist
 
-Sobald die Tür geöffnet wird und der Ablauf in **Leerlauf** übergeht:
+Sobald die Tür geöffnet wird und der Ablauf in `idle` übergeht:
 - Status-LED **aus**
 - Kammerlicht **an**
 
 Wenn danach wieder geschlossen wird und kein Druck läuft:
 - Kammerlicht **aus**
 - Workflow beginnt wieder von vorne
-
-## Hinweise
-- Die externe Statusleuchte sollte idealerweise **RGB** und **Helligkeit** unterstützen.
-- Für mehrere Blueprint-Instanzen sollte eine eigene Wiederherstellungs-Szenen-ID für Fehlerleuchten gesetzt werden.

@@ -215,42 +215,41 @@ variables:
 
   status_light_var: !input status_light
   enable_progress_brightness_var: !input enable_progress_brightness
-  running_pulse_seconds_var: !input running_pulse_seconds
-  finished_pulse_seconds_var: !input finished_pulse_seconds
-  error_pulse_seconds_var: !input error_pulse_seconds
-  status_error_brightness_var: !input status_error_brightness
-
   diagnosis_error_sensors_var: !input diagnosis_error_sensors
   manual_override_helper_var: !input manual_override_helper
-
-  enable_chamber_blink_var: !input enable_chamber_blink
   external_warning_lights_var: !input external_warning_lights
   restore_warning_lights_after_error_var: !input restore_warning_lights_after_error
   warning_lights_restore_scene_var: !input warning_lights_restore_scene
 
-  print_status: "{{ states(print_status_entity) }}"
-  current_stage: "{{ states(current_stage_entity) }}"
+  print_status: "{{ states(print_status_entity) | lower }}"
+  current_stage: "{{ states(current_stage_entity) | lower }}"
   door_is_open: "{{ is_state(door_entity, 'on') }}"
 
-  is_idle_stage: "{{ current_stage == 'Leerlauf' }}"
-  is_running_state: "{{ print_status in ['Läuft', 'Pause'] or current_stage == 'Drucken' }}"
-  is_prepare_state: >-
-    {{ current_stage in [
-      'Kühlkammer',
-      'Werkzeugkopf wird in die Mitte bewegt',
-      'Identifizierung der Bauplatte',
-      'Filament wechseln',
-      'Kalibrierung der Extrusion',
-      'Reinigung der Düsenspitze',
-      'Fegen im XY-Mechanik-Modus',
-      'Warten darauf, dass das Heizbett die Zieltemperatur erreicht',
-      'Automatische Bettnivellierung',
-      'Drucken von Kalibrierungslinien'
-    ] or print_status == 'Vorbereiten' }}
-  is_finished_state: "{{ print_status == 'Fertig' }}"
+  prepare_stages:
+    - cooling_chamber
+    - moving_toolhead_to_center_of_heatbed
+    - identifying_build_plate_type
+    - changing_filament
+    - calibrating_extrusion
+    - sweeping_xy_mech_mode
+    - waiting_for_heatbed_temperature
+    - auto_bed_leveling
+    - print_calibration_lines
+    - cleaning_nozzle_plate
+    - cleaning_nozzle_tip
+    - heatbed_preheating
+    - heating_hotend
+    - checking_extruder_temperature
+    - purifying_chamber_air
+    - checking_print_surface
+
+  is_idle_stage: "{{ current_stage == 'idle' }}"
+  is_running_state: "{{ print_status in ['running', 'pause'] or current_stage == 'printing' }}"
+  is_prepare_state: "{{ current_stage in prepare_stages or print_status == 'prepare' }}"
+  is_finished_state: "{{ print_status == 'finish' }}"
   is_error_state: >-
     {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
-    {{ sensor_error or print_status == 'Fehlgeschlagen' }}
+    {{ sensor_error or print_status == 'failed' }}
 
   progress_value: >-
     {% if print_progress_entity is defined and print_progress_entity != [] and states(print_progress_entity) not in ['unknown','unavailable','none','None',''] %}
@@ -315,14 +314,14 @@ action:
               - parallel:
                   - if:
                       - condition: template
-                        value_template: "{{ enable_chamber_blink_var }}"
+                        value_template: "{{ !input enable_chamber_blink }}"
                     then:
                       - repeat:
                           while:
                             - condition: template
                               value_template: >-
                                 {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
-                                {{ sensor_error or states(print_status_entity) == 'Fehlgeschlagen' }}
+                                {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
                           sequence:
                             - service: light.turn_on
                               target:
@@ -344,7 +343,7 @@ action:
                             - condition: template
                               value_template: >-
                                 {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
-                                {{ sensor_error or states(print_status_entity) == 'Fehlgeschlagen' }}
+                                {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
                           sequence:
                             - service: light.turn_on
                               target:
@@ -424,7 +423,7 @@ action:
                         - condition: template
                           value_template: >-
                             {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
-                            {{ sensor_error or states(print_status_entity) == 'Fehlgeschlagen' }}
+                            {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
                       sequence:
                         - service: light.turn_on
                           target:
@@ -448,9 +447,9 @@ action:
                       while:
                         - condition: template
                           value_template: >-
-                            {{ states(print_status_entity) == 'Fertig'
+                            {{ (states(print_status_entity) | lower) == 'finish'
                                and is_state(door_entity, 'off')
-                               and states(current_stage_entity) != 'Leerlauf' }}
+                               and (states(current_stage_entity) | lower) != 'idle' }}
                       sequence:
                         - service: light.turn_on
                           target:
@@ -473,7 +472,7 @@ action:
                   - repeat:
                       while:
                         - condition: template
-                          value_template: "{{ states(print_status_entity) in ['Läuft', 'Pause'] or states(current_stage_entity) == 'Drucken' }}"
+                          value_template: "{{ (states(print_status_entity) | lower) in ['running', 'pause'] or (states(current_stage_entity) | lower) == 'printing' }}"
                       sequence:
                         - service: light.turn_on
                           target:
