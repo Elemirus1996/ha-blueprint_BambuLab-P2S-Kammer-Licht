@@ -15,35 +15,30 @@ blueprint:
       input:
         print_status_sensor:
           name: Druckstatus Sensor
-          description: "Beispiel: sensor.drucker_p2s_druckstatus"
           selector:
             entity:
               domain: sensor
 
         current_stage_sensor:
           name: Aktueller Arbeitsschritt Sensor
-          description: "Beispiel: sensor.drucker_p2s_aktueller_arbeitsschritt"
           selector:
             entity:
               domain: sensor
 
         print_progress_sensor:
           name: Druckfortschritt Sensor (%)
-          description: "Beispiel: sensor.drucker_p2s_druckfortschritt"
           selector:
             entity:
               domain: sensor
 
         door_sensor:
           name: Gehäusetür Sensor
-          description: "Beispiel: binary_sensor.drucker_p2s_gehausetur"
           selector:
             entity:
               domain: binary_sensor
 
         chamber_light:
           name: Druckraumbeleuchtung
-          description: "Beispiel: light.drucker_p2s_druckraumbeleuchtung"
           selector:
             entity:
               domain: light
@@ -282,95 +277,110 @@ trigger:
     id: diagnosis_error_changed
 
 action:
-  - parallel:
+  - if:
+      - condition: template
+        value_template: "{{ is_error_state }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var and trigger.id == 'diagnosis_error_changed' and trigger.to_state is not none and trigger.to_state.state == 'on' }}"
+        then:
+          - service: scene.create
+            data:
+              scene_id: !input warning_lights_restore_scene
+              snapshot_entities: !input external_warning_lights
+
+      - parallel:
+          - if:
+              - condition: template
+                value_template: "{{ enable_chamber_blink_var }}"
+            then:
+              - repeat:
+                  while:
+                    - condition: template
+                      value_template: >-
+                        {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
+                        {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
+                  sequence:
+                    - service: light.turn_on
+                      target:
+                        entity_id: !input chamber_light
+                    - delay:
+                        seconds: !input error_pulse_seconds
+                    - service: light.turn_off
+                      target:
+                        entity_id: !input chamber_light
+                    - delay:
+                        seconds: !input error_pulse_seconds
+
+          - if:
+              - condition: template
+                value_template: "{{ status_light_var != [] }}"
+            then:
+              - repeat:
+                  while:
+                    - condition: template
+                      value_template: >-
+                        {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
+                        {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
+                  sequence:
+                    - service: light.turn_on
+                      target:
+                        entity_id: !input status_light
+                      data:
+                        rgb_color: [255, 0, 0]
+                        brightness: !input status_error_brightness
+                    - delay:
+                        seconds: !input error_pulse_seconds
+                    - service: light.turn_off
+                      target:
+                        entity_id: !input status_light
+                    - delay:
+                        seconds: !input error_pulse_seconds
+
+          - if:
+              - condition: template
+                value_template: "{{ external_warning_lights_var | count > 0 }}"
+            then:
+              - repeat:
+                  while:
+                    - condition: template
+                      value_template: >-
+                        {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
+                        {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
+                  sequence:
+                    - service: light.turn_on
+                      target:
+                        entity_id: !input external_warning_lights
+                      data:
+                        rgb_color: !input warning_light_color
+                        brightness: !input warning_light_brightness
+                    - delay:
+                        seconds: !input warning_light_blink_interval
+                    - service: light.turn_off
+                      target:
+                        entity_id: !input external_warning_lights
+                    - delay:
+                        seconds: !input warning_light_blink_interval
+
+    else:
       - choose:
           - conditions:
               - condition: template
-                value_template: "{{ is_error_state }}"
+                value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var }}"
             sequence:
-              - if:
-                  - condition: template
-                    value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var }}"
-                then:
-                  - service: scene.create
-                    data:
-                      scene_id: !input warning_lights_restore_scene
-                      snapshot_entities: !input external_warning_lights
-
-              - parallel:
-                  - if:
-                      - condition: template
-                        value_template: "{{ enable_chamber_blink_var }}"
-                    then:
-                      - repeat:
-                          while:
-                            - condition: template
-                              value_template: >-
-                                {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
-                                {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
-                          sequence:
-                            - service: light.turn_on
-                              target:
-                                entity_id: !input chamber_light
-                            - delay:
-                                seconds: !input error_pulse_seconds
-                            - service: light.turn_off
-                              target:
-                                entity_id: !input chamber_light
-                            - delay:
-                                seconds: !input error_pulse_seconds
-
-                  - if:
-                      - condition: template
-                        value_template: "{{ external_warning_lights_var | count > 0 }}"
-                    then:
-                      - repeat:
-                          while:
-                            - condition: template
-                              value_template: >-
-                                {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
-                                {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
-                          sequence:
-                            - service: light.turn_on
-                              target:
-                                entity_id: !input external_warning_lights
-                              data:
-                                rgb_color: !input warning_light_color
-                                brightness: !input warning_light_brightness
-                            - delay:
-                                seconds: !input warning_light_blink_interval
-                            - service: light.turn_off
-                              target:
-                                entity_id: !input external_warning_lights
-                            - delay:
-                                seconds: !input warning_light_blink_interval
-
+              - service: scene.turn_on
+                target:
+                  entity_id: "scene.{{ warning_lights_restore_scene_var }}"
           - conditions:
               - condition: template
-                value_template: "{{ not is_error_state }}"
+                value_template: "{{ external_warning_lights_var | count > 0 }}"
             sequence:
-              - choose:
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var }}"
-                    sequence:
-                      - service: scene.turn_on
-                        target:
-                          entity_id: "scene.{{ warning_lights_restore_scene_var }}"
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ external_warning_lights_var | count > 0 }}"
-                    sequence:
-                      - service: light.turn_off
-                        target:
-                          entity_id: !input external_warning_lights
+              - service: light.turn_off
+                target:
+                  entity_id: !input external_warning_lights
 
       - choose:
-          - conditions:
-              - condition: template
-                value_template: "{{ is_error_state }}"
-            sequence: []
-
           - conditions:
               - condition: template
                 value_template: "{{ is_running_state }}"
@@ -400,31 +410,6 @@ action:
             value_template: "{{ status_light_var != [] }}"
         then:
           - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ is_error_state }}"
-                sequence:
-                  - repeat:
-                      while:
-                        - condition: template
-                          value_template: >-
-                            {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
-                            {{ sensor_error or (states(print_status_entity) | lower) == 'failed' }}
-                      sequence:
-                        - service: light.turn_on
-                          target:
-                            entity_id: !input status_light
-                          data:
-                            rgb_color: [255, 0, 0]
-                            brightness: !input status_error_brightness
-                        - delay:
-                            seconds: !input error_pulse_seconds
-                        - service: light.turn_off
-                          target:
-                            entity_id: !input status_light
-                        - delay:
-                            seconds: !input error_pulse_seconds
-
               - conditions:
                   - condition: template
                     value_template: "{{ is_finished_state and not door_is_open }}"
