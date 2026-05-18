@@ -40,9 +40,10 @@ Folgende Arbeitsschritte werden als Vorbereitung behandelt:
 Verhalten:
 - Status-LED **orange mit 50 % Helligkeit**
 - Tür auf → **Kammerlicht an**
+- Tür zu → **Kammerlicht aus**
 
-### Druck läuft
-Wenn Druckstatus = **Läuft** oder Arbeitsschritt = **Drucken**:
+### Druck läuft / Pause
+Wenn Druckstatus = **Läuft** oder **Pause** oder Arbeitsschritt = **Drucken**:
 - Kammerlicht **an**, auch wenn Tür geöffnet/geschlossen wird
 - Status-LED **blau pulsierend**
 - Helligkeit beginnt bei **5 %** und steigt anhand von **Druckfortschritt** in **5-%-Schritten**
@@ -60,9 +61,9 @@ Dann:
 
 ### Druck fertig
 Wenn Druckstatus = **Fertig**:
-- Status-LED **grün pulsierend**
+- Status-LED **grün pulsierend**, solange die Tür geschlossen ist und der Arbeitsschritt noch **nicht Leerlauf** ist
 
-Sobald die Tür geöffnet wird:
+Sobald die Tür geöffnet wird und der Ablauf in **Leerlauf** übergeht:
 - Status-LED **aus**
 - Kammerlicht **an**
 

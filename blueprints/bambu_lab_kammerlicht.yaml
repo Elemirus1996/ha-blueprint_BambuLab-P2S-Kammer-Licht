@@ -59,7 +59,7 @@ blueprint:
             Optionale separate Leuchte für Druckerstatus.
             AUS = Leerlauf
             Orange 50 % = Vorbereitung
-            Blau pulsierend = Druck läuft
+            Blau pulsierend = Druck läuft / Pause
             Grün pulsierend = Druck fertig
             Rot pulsierend = Fehler
           default: []
@@ -233,7 +233,7 @@ variables:
   door_is_open: "{{ is_state(door_entity, 'on') }}"
 
   is_idle_stage: "{{ current_stage == 'Leerlauf' }}"
-  is_running_state: "{{ print_status == 'Läuft' or current_stage == 'Drucken' }}"
+  is_running_state: "{{ print_status in ['Läuft', 'Pause'] or current_stage == 'Drucken' }}"
   is_prepare_state: >-
     {{ current_stage in [
       'Kühlkammer',
@@ -305,7 +305,7 @@ action:
             sequence:
               - if:
                   - condition: template
-                    value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var and trigger.id == 'diagnosis_error_changed' }}"
+                    value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var }}"
                 then:
                   - service: scene.create
                     data:
@@ -320,7 +320,9 @@ action:
                       - repeat:
                           while:
                             - condition: template
-                              value_template: "{{ is_error_state }}"
+                              value_template: >-
+                                {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
+                                {{ sensor_error or states(print_status_entity) == 'Fehlgeschlagen' }}
                           sequence:
                             - service: light.turn_on
                               target:
@@ -340,7 +342,9 @@ action:
                       - repeat:
                           while:
                             - condition: template
-                              value_template: "{{ is_error_state }}"
+                              value_template: >-
+                                {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
+                                {{ sensor_error or states(print_status_entity) == 'Fehlgeschlagen' }}
                           sequence:
                             - service: light.turn_on
                               target:
@@ -363,7 +367,7 @@ action:
               - choose:
                   - conditions:
                       - condition: template
-                        value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var and trigger.id == 'diagnosis_error_changed' }}"
+                        value_template: "{{ external_warning_lights_var | count > 0 and restore_warning_lights_after_error_var }}"
                     sequence:
                       - service: scene.turn_on
                         target:
@@ -418,7 +422,9 @@ action:
                   - repeat:
                       while:
                         - condition: template
-                          value_template: "{{ is_error_state }}"
+                          value_template: >-
+                            {% set sensor_error = diagnosis_error_sensors_var | count > 0 and (expand(diagnosis_error_sensors_var) | selectattr('state', 'eq', 'on') | list | count > 0) %}
+                            {{ sensor_error or states(print_status_entity) == 'Fehlgeschlagen' }}
                       sequence:
                         - service: light.turn_on
                           target:
@@ -441,7 +447,10 @@ action:
                   - repeat:
                       while:
                         - condition: template
-                          value_template: "{{ states(print_status_entity) == 'Fertig' and is_state(door_entity, 'off') }}"
+                          value_template: >-
+                            {{ states(print_status_entity) == 'Fertig'
+                               and is_state(door_entity, 'off')
+                               and states(current_stage_entity) != 'Leerlauf' }}
                       sequence:
                         - service: light.turn_on
                           target:
@@ -464,7 +473,7 @@ action:
                   - repeat:
                       while:
                         - condition: template
-                          value_template: "{{ states(print_status_entity) == 'Läuft' or states(current_stage_entity) == 'Drucken' }}"
+                          value_template: "{{ states(print_status_entity) in ['Läuft', 'Pause'] or states(current_stage_entity) == 'Drucken' }}"
                       sequence:
                         - service: light.turn_on
                           target:
