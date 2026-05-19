@@ -157,6 +157,11 @@ variables:
     {% set t = as_timestamp(now()) | float(0) %}
     {{ ((t / period) | round(0, 'floor') | int) % 2 == 0 }}
 
+  pulse_required: >-
+    {{ is_error_state
+       or (is_printing_state and print_led_mode_var == 'pulse')
+       or (finish_active and finished_led_mode_var == 'pulse') }}
+
 trigger:
   - platform: time_pattern
     seconds: "/10"
@@ -178,12 +183,7 @@ action:
   - if:
       - condition: template
         value_template: >-
-          {{ trigger.id == 'pulse_tick'
-             and not (
-               is_error_state
-               or (is_printing_state and print_led_mode_var == 'pulse')
-               or (finish_active and finished_led_mode_var == 'pulse')
-             ) }}
+          {{ trigger.id == 'pulse_tick' and not pulse_required }}
     then:
       - stop: "Kein Puls-Update nötig"
 
