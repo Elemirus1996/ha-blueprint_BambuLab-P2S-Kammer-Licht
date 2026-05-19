@@ -1,46 +1,33 @@
-# 🖨️ Bambu Lab – Kammerlicht Steuerung
+# 🖨️ Bambu Lab – Kammerlicht & Status LED (vereinfacht)
 
 [![Open your Home Assistant instance and import this blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Elemirus1996/ha-blueprint_BambuLab-P2S-Kammer-Licht/main/blueprints/bambu_lab_kammerlicht.yaml)
 
-Home-Assistant-Blueprint für die **ha-bambulab** / **Bambu Lab Integration**.
+Vereinfachtes Home-Assistant-Blueprint für **ha-bambulab / Bambu Lab**.
 
-## Unterstützte Entities
-- `sensor.drucker_p2s_druckstatus`
-- `sensor.drucker_p2s_aktueller_arbeitsschritt`
-- `sensor.drucker_p2s_druckfortschritt`
-- `binary_sensor.drucker_p2s_gehausetur`
-- `light.drucker_p2s_druckraumbeleuchtung`
-- `binary_sensor.drucker_p2s_druckfehler`
-- `binary_sensor.drucker_p2s_hms_fehler`
+## Verwendete Entities
+- `sensor` Druckerstatus
+- `binary_sensor` Gerätetür
+- `light` Kammerlicht
+- `light` Status-LED
 
-## Fehlerverhalten
-- Fehler wird aktiv, wenn einer der gewählten Fehler-Sensoren auf `on` steht oder der Druckstatus `failed` ist.
-- Fehler endet automatisch, sobald **alle** Fehler-Sensoren wieder `off` sind und der Druckstatus **nicht mehr** `failed` ist.
-- Die Snapshot-Szene für externe Fehlerleuchten wird nur beim **Übergang in den Fehlerzustand** gespeichert.
-- Nach Fehlerende werden externe Fehlerleuchten korrekt ausgeschaltet oder auf den Zustand **vor dem Fehler** zurückgesetzt.
+## Ablauf
+- Prüft den Druckstatus alle **10 Sekunden**.
+- Zusätzliche Reaktion direkt bei Änderungen von Druckstatus und Tür.
 
-## Enum-Werte
-Das Blueprint arbeitet mit den technischen Statuswerten der Integration.
+### Leerlauf (`idle`)
+- Status-LED **aus**.
+- Kammerlicht **aus**.
+- Wird die Tür geöffnet, ist das Kammerlicht an, bis die Tür wieder geschlossen wird.
 
-### Druckstatus
-- `prepare`
-- `running`
-- `pause`
-- `finish`
-- `failed`
-- `idle`
-- `offline`
+### Druck / Pause (`running`, `pause`)
+- Kammerlicht immer **an** (unabhängig von der Tür).
+- Status-LED **blau**, wahlweise **statisch** oder **pulsierend**.
 
-### Aktueller Arbeitsschritt
-Beispiele:
-- `idle`
-- `printing`
-- `cooling_chamber`
-- `moving_toolhead_to_center_of_heatbed`
-- `identifying_build_plate_type`
-- `changing_filament`
-- `calibrating_extrusion`
-- `sweeping_xy_mech_mode`
-- `waiting_for_heatbed_temperature`
-- `auto_bed_leveling`
-- `print_calibration_lines`
+### Druck fertig (`finish`, `finished`)
+- Status-LED **grün**, wahlweise **statisch** oder **pulsierend**.
+- Kammerlicht bleibt zunächst an und geht nach **5 Minuten** (konfigurierbar) aus.
+- Wenn die Tür in dieser Zeit geöffnet und danach wieder geschlossen wird, wechselt alles sofort in den Leerlauf-Modus.
+
+### Druckfehler (`failed`, `error`, `print_error`)
+- Kammerlicht **an**.
+- Status-LED **rot pulsierend**.
