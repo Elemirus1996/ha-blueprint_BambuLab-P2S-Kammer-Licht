@@ -140,7 +140,7 @@ variables:
   finish_active: "{{ is_finished_state and not finish_cleared_by_door }}"
 
   finish_window_active: >-
-    {{ finish_active and (status_since_seconds < ((finished_light_timeout_minutes_var | int(5)) * 60)) }}
+    {{ finish_active and (status_since_seconds < ((finished_light_timeout_minutes_var | int) * 60)) }}
 
   print_pulse_on: >-
     {% set period = print_pulse_seconds_var | float(2) %}
