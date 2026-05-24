@@ -1,0 +1,420 @@
+blueprint:
+  name: "BambuLab P2S – Statusleuchte & Kammerlicht"
+  description: >-
+    Steuert automatisch eine externe RGB-Statusleuchte und das Kammerlicht
+    des BambuLab P2S anhand des aktuellen Druckstatus.
+
+    ════════════════════════════════════════════
+    🟢 GRÜN        → Druck abgeschlossen (finish)
+    🟠 ORANGE       → In Vorbereitung (prepare / init / slicing)
+    🔴 ROT (Puls)  → Fehler (HMS / Druckfehler / Status "failed")
+    🔵 BLAU        → Im Druck – Helligkeit spiegelt Fortschritt wider
+                     (1 % = fast dunkel · 100 % = volle Helligkeit)
+    ════════════════════════════════════════════
+
+    Kammerlicht-Logik:
+      • Kein Druck aktiv  → Licht folgt Türsensor (offen = an, zu = aus)
+      • Vorbereitung/Druck → Kammerlicht immer an (konfigurierbar)
+      • Fehler            → Kammerlicht bleibt an
+
+    Kompatibel mit: ha-bambulab Integration (greghesp/ha-bambulab)
+    Unterstützte Druckstatus-Werte:
+      idle | prepare | init | slicing | running | pause | finish | failed | offline | unknown
+
+  domain: automation
+  author: Elemirus1996
+  homeassistant:
+    min_version: "2024.6.0"
+
+  input:
+
+    # ──────────────────────────────────────────
+    # DRUCKER-SENSOREN
+    # ──────────────────────────────────────────
+    print_status_sensor:
+      name: "📊 Druckstatus-Sensor"
+      description: >-
+        BambuLab Sensor für den aktuellen Druckstatus.
+        Entitätsname enthält normalerweise „print_status".
+        Mögliche Werte: idle, prepare, init, slicing, running,
+        pause, finish, failed, offline, unknown
+      selector:
+        entity:
+          domain: sensor
+
+    print_progress_sensor:
+      name: "📈 Druckfortschritt-Sensor"
+      description: >-
+        BambuLab Sensor für den Druckfortschritt in Prozent (0–100).
+        Entitätsname enthält normalerweise „print_progress".
+      selector:
+        entity:
+          domain: sensor
+
+    door_sensor:
+      name: "🚪 Gehäusetür-Sensor"
+      description: >-
+        BambuLab Binärsensor für die Gehäusetür.
+        Entitätsname enthält normalerweise „door".
+        Zustand: on = Tür geöffnet | off = Tür geschlossen
+      selector:
+        entity:
+          domain: binary_sensor
+
+    hms_error_sensor:
+      name: "⚠️ HMS-Fehler-Sensor"
+      description: >-
+        BambuLab Binärsensor für HMS-Fehler.
+        Entitätsname enthält normalerweise „hms".
+        Zustand: on = Fehler aktiv
+      selector:
+        entity:
+          domain: binary_sensor
+
+    print_error_sensor:
+      name: "🚨 Druckfehler-Sensor"
+      description: >-
+        BambuLab Binärsensor für allgemeine Druckfehler.
+        Entitätsname enthält normalerweise „print_error".
+        Zustand: on = Fehler aktiv
+      selector:
+        entity:
+          domain: binary_sensor
+
+    # ──────────────────────────────────────────
+    # LICHTER
+    # ──────────────────────────────────────────
+    chamber_light_entity:
+      name: "💡 Kammerlicht (BambuLab)"
+      description: >-
+        Das integrierte Kammerlicht des BambuLab P2S.
+        Entitätsname enthält normalerweise „chamber_light".
+      selector:
+        entity:
+          domain: light
+
+    status_light_entity:
+      name: "🌈 Statusleuchte (RGB)"
+      description: >-
+        Externe RGB-Lampe als Statusanzeige.
+        ⚠️ Muss RGB-Farben UND Helligkeit unterstützen!
+        (z. B. Govee, WLED, Hue, Shelly RGBW, …)
+      selector:
+        entity:
+          domain: light
+
+    # ──────────────────────────────────────────
+    # KAMMERLICHT-OPTIONEN
+    # ──────────────────────────────────────────
+    chamber_light_while_printing:
+      name: "💡 Kammerlicht während des Drucks"
+      description: >-
+        Soll das Kammerlicht während Vorbereitung und Druck
+        automatisch eingeschaltet bleiben?
+      default: true
+      selector:
+        boolean:
+
+    # ──────────────────────────────────────────
+    # STATUSLEUCHTEN-OPTIONEN
+    # ──────────────────────────────────────────
+    idle_status_light_mode:
+      name: "💤 Statusleuchte im Leerlauf"
+      description: >-
+        Verhalten der Statusleuchte wenn kein Druck aktiv ist
+        (Status: idle / offline / unknown).
+      default: "off"
+      selector:
+        select:
+          options:
+            - label: "Ausschalten"
+              value: "off"
+            - label: "Weiß (10 % Helligkeit – Nachtlicht)"
+              value: "white_dim"
+
+    min_brightness_pct:
+      name: "🔆 Mindesthelligkeit Blau bei 0 % Fortschritt"
+      description: >-
+        Damit die blaue Statusleuchte auch bei 0 % Druckfortschritt
+        noch sichtbar ist. Empfohlen: 5–10 %.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 25
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+
+    # ──────────────────────────────────────────
+    # FEHLER-BLINKEN
+    # ──────────────────────────────────────────
+    error_blink_on_sec:
+      name: "🔴 Fehler-Blinken: AN-Zeit"
+      description: >-
+        Wie lange leuchtet die rote LED pro Blink-Zyklus auf?
+        Empfohlen: 0.5 Sekunden
+      default: 0.5
+      selector:
+        number:
+          min: 0.2
+          max: 3.0
+          step: 0.1
+          unit_of_measurement: "s"
+          mode: slider
+
+    error_blink_off_sec:
+      name: "🔴 Fehler-Blinken: AUS-Zeit"
+      description: >-
+        Wie lange ist die LED pro Blink-Zyklus aus?
+        Empfohlen: 0.5 Sekunden
+      default: 0.5
+      selector:
+        number:
+          min: 0.2
+          max: 3.0
+          step: 0.1
+          unit_of_measurement: "s"
+          mode: slider
+
+# ══════════════════════════════════════════════════════
+# AUTOMATION-KONFIGURATION
+# ══════════════════════════════════════════════════════
+mode: restart
+max_exceeded: silent
+
+variables:
+  # Entitäts-IDs (werden beim Speichern der Automation einmalig aufgelöst)
+  v_status:          !input print_status_sensor
+  v_progress:        !input print_progress_sensor
+  v_door:            !input door_sensor
+  v_hms:             !input hms_error_sensor
+  v_err:             !input print_error_sensor
+  v_chamber:         !input chamber_light_entity
+  v_status_light:    !input status_light_entity
+
+  # Konfigurationswerte
+  v_idle_mode:           !input idle_status_light_mode
+  v_chamber_printing:    !input chamber_light_while_printing
+  v_min_bright_pct:      !input min_brightness_pct
+  v_blink_on:            !input error_blink_on_sec
+  v_blink_off:           !input error_blink_off_sec
+
+# ══════════════════════════════════════════════════════
+# TRIGGER
+# ══════════════════════════════════════════════════════
+trigger:
+  # Druckstatus hat sich geändert
+  - platform: state
+    entity_id: !input print_status_sensor
+    id: "status_changed"
+
+  # Druckfortschritt hat sich geändert (für Blau-Helligkeit)
+  - platform: state
+    entity_id: !input print_progress_sensor
+    id: "progress_changed"
+
+  # Tür wurde geöffnet oder geschlossen
+  - platform: state
+    entity_id: !input door_sensor
+    id: "door_changed"
+
+  # HMS-Fehler hat sich geändert
+  - platform: state
+    entity_id: !input hms_error_sensor
+    id: "hms_changed"
+
+  # Druckfehler hat sich geändert
+  - platform: state
+    entity_id: !input print_error_sensor
+    id: "error_changed"
+
+  # Home Assistant wurde gestartet / neu geladen → Status wiederherstellen
+  - platform: homeassistant
+    event: start
+    id: "ha_start"
+
+# ══════════════════════════════════════════════════════
+# AKTIONEN
+# ══════════════════════════════════════════════════════
+action:
+  - choose:
+
+    # ┌─────────────────────────────────────────────────────────┐
+    # │  🔴 FEHLER  –  Rot pulsierend  (höchste Priorität)      │
+    # │  Bedingung: HMS-Fehler ODER Druckfehler ODER "failed"   │
+    # └─────────────────────────────────────────────────────────┘
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ is_state(v_hms, 'on')
+                 or is_state(v_err, 'on')
+                 or is_state(v_status, 'failed') }}
+        sequence:
+          # Kammerlicht einschalten (gut sichtbar bei Fehler)
+          - service: light.turn_on
+            target:
+              entity_id: !input chamber_light_entity
+
+          # Rot pulsieren solange Fehler aktiv ist
+          # (mode: restart sorgt dafür, dass neue Trigger die Schleife abbrechen)
+          - repeat:
+              while:
+                - condition: template
+                  value_template: >-
+                    {{ is_state(v_hms, 'on')
+                       or is_state(v_err, 'on')
+                       or is_state(v_status, 'failed') }}
+              sequence:
+                # LED AN – Rot, volle Helligkeit
+                - service: light.turn_on
+                  target:
+                    entity_id: !input status_light_entity
+                  data:
+                    rgb_color: [255, 0, 0]
+                    brightness: 255
+                    transition: 0
+
+                - delay:
+                    milliseconds: "{{ (v_blink_on | float(0.5) * 1000) | int }}"
+
+                # LED AUS
+                - service: light.turn_off
+                  target:
+                    entity_id: !input status_light_entity
+                  data:
+                    transition: 0
+
+                - delay:
+                    milliseconds: "{{ (v_blink_off | float(0.5) * 1000) | int }}"
+
+    # ┌─────────────────────────────────────────────────────────┐
+    # │  🔵 IM DRUCK  –  Blau, Helligkeit = Fortschritt %       │
+    # │  Status: running | pause                                 │
+    # └─────────────────────────────────────────────────────────┘
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ is_state(v_status, 'running')
+                 or is_state(v_status, 'pause') }}
+        sequence:
+          # Kammerlicht (konfigurierbar)
+          - if:
+              - condition: template
+                value_template: "{{ v_chamber_printing | bool(true) }}"
+            then:
+              - service: light.turn_on
+                target:
+                  entity_id: !input chamber_light_entity
+
+          # Statusleuchte: Blau, Helligkeit aus Fortschritt berechnen
+          # Formel: min_brightness + (progress/100) × (255 - min_brightness)
+          # Ergebnis: bei 0% = Mindesthelligkeit, bei 100% = volle Helligkeit
+          - service: light.turn_on
+            target:
+              entity_id: !input status_light_entity
+            data:
+              rgb_color: [0, 80, 255]
+              transition: 2
+              brightness: >-
+                {% set pct = states(v_progress) | int(0) %}
+                {% set min_b = (v_min_bright_pct | int(5)) * 2.55 %}
+                {% set brightness = (min_b + (pct / 100.0) * (255.0 - min_b)) | int %}
+                {{ [brightness, 255] | min | int }}
+
+    # ┌─────────────────────────────────────────────────────────┐
+    # │  🟠 VORBEREITUNG  –  Orange, volle Helligkeit            │
+    # │  Status: prepare | init | slicing                       │
+    # └─────────────────────────────────────────────────────────┘
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ is_state(v_status, 'prepare')
+                 or is_state(v_status, 'init')
+                 or is_state(v_status, 'slicing') }}
+        sequence:
+          # Kammerlicht (konfigurierbar)
+          - if:
+              - condition: template
+                value_template: "{{ v_chamber_printing | bool(true) }}"
+            then:
+              - service: light.turn_on
+                target:
+                  entity_id: !input chamber_light_entity
+
+          # Statusleuchte: Orange
+          - service: light.turn_on
+            target:
+              entity_id: !input status_light_entity
+            data:
+              rgb_color: [255, 120, 0]
+              brightness: 255
+              transition: 1
+
+    # ┌─────────────────────────────────────────────────────────┐
+    # │  🟢 FERTIG  –  Grün, volle Helligkeit                   │
+    # │  Status: finish                                         │
+    # └─────────────────────────────────────────────────────────┘
+      - conditions:
+          - condition: template
+            value_template: "{{ is_state(v_status, 'finish') }}"
+        sequence:
+          # Kammerlicht an (Druck kann entnommen werden)
+          - service: light.turn_on
+            target:
+              entity_id: !input chamber_light_entity
+
+          # Statusleuchte: Grün
+          - service: light.turn_on
+            target:
+              entity_id: !input status_light_entity
+            data:
+              rgb_color: [0, 255, 30]
+              brightness: 255
+              transition: 1
+
+    # ┌─────────────────────────────────────────────────────────┐
+    # │  💤 LEERLAUF  –  Kammerlicht folgt Tür                  │
+    # │  Status: idle | offline | unknown                       │
+    # └─────────────────────────────────────────────────────────┘
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ is_state(v_status, 'idle')
+                 or is_state(v_status, 'offline')
+                 or is_state(v_status, 'unknown') }}
+        sequence:
+          # Kammerlicht: An wenn Tür offen, Aus wenn Tür geschlossen
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_state(v_door, 'on') }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input chamber_light_entity
+            default:
+              - service: light.turn_off
+                target:
+                  entity_id: !input chamber_light_entity
+
+          # Statusleuchte im Leerlauf (nach Konfiguration)
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ v_idle_mode == 'white_dim' }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input status_light_entity
+                    data:
+                      rgb_color: [255, 255, 255]
+                      brightness: 25
+                      transition: 2
+            default:
+              # Standard: Statusleuchte ausschalten
+              - service: light.turn_off
+                target:
+                  entity_id: !input status_light_entity
+                data:
+                  transition: 2
