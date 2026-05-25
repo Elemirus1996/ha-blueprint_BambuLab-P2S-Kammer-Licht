@@ -269,6 +269,35 @@ trigger:
 # AKTIONEN
 # ══════════════════════════════════════════════════════
 action:
+
+  # ── FRÜHER ABBRUCH 1 ────────────────────────────────────────────────────────
+  # Türsensor-Trigger während "finish": Status-LED NICHT anfassen.
+  # Das Kammerlicht bleibt ohnehin an (wurde bei finish eingeschaltet).
+  # Ohne diesen Stopp würde mode:restart die Finish-Sequenz neu starten
+  # → Grünlicht käme im Nachtbetrieb nach dem Timeout wieder an.
+  - if:
+      - condition: trigger
+        id: "door_changed"
+      - condition: template
+        value_template: "{{ is_state(v_status, 'finish') }}"
+    then:
+      - stop: "Tür-Änderung während finish – Status-LED bleibt unverändert"
+
+  # ── FRÜHER ABBRUCH 2 ────────────────────────────────────────────────────────
+  # Fortschritts-Trigger wenn NICHT aktiv gedruckt wird: ignorieren.
+  # Der Fortschritt bleibt nach dem Druck bei 100% und ändert sich erst
+  # wieder beim nächsten Druck – dieser Trigger soll dann nicht die
+  # Finish- oder Idle-Logik neu starten.
+  - if:
+      - condition: trigger
+        id: "progress_changed"
+      - condition: template
+        value_template: >-
+          {{ not (is_state(v_status, 'running') or is_state(v_status, 'pause')) }}
+    then:
+      - stop: "Fortschritts-Änderung außerhalb aktiven Drucks – ignoriert"
+
+  # ── HAUPTLOGIK ──────────────────────────────────────────────────────────────
   - choose:
 
     # ┌─────────────────────────────────────────────────────────┐
